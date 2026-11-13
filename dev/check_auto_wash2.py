@@ -82,6 +82,9 @@ scripts = [r'''JSON.stringify((()=>{
     // ready yet (especially on Windows CI). Wait for the actual tab activation.
     document.getElementById('btnAutoWash2Mode').click();
     if (document.getElementById('autoWash2ModePanel').hidden) return {waiting:'tab initialization'};
+    if (document.getElementById('w2Depth') || document.getElementById('w2Reference') ||
+        !document.getElementById('wpDepth') || !document.getElementById('wpReference'))
+        return {error:'Personal settings must only exist on the personal tab'};
     window.AutoWash2.refresh();
     const r = document.getElementById('w2Role');
     if (r.disabled || !Array.from(r.options).some(o => o.value === state.saveRoles[0].key)) return {waiting:'role options'};
@@ -209,6 +212,25 @@ scripts.extend([r'''JSON.stringify((()=>{
     })().catch(e=>window.diskTest='error '+e);
     return {ready:true};
 })())''', '''JSON.stringify(diskTest==='ok'?{ready:true}:diskTest==='running'?{waiting:diskTest}:{error:diskTest})'''])
+
+for policy in ['depth-1', 'timed']:
+    scripts.extend([r'''JSON.stringify((()=>{
+        const el=id=>document.getElementById(id);
+        el('wpClear').click(); // Keep the synthetic save's locked starting purple.
+        el('wpDepth').value=POLICY; el('wpDepth').dispatchEvent(new Event('change'));
+        if (!el('wpReference').disabled || !el('wpSlots').disabled) return {error:'Wrong legacy controls'};
+        el('wpBudget').value=0; el('wpBudget').dispatchEvent(new Event('input'));
+        el('wpRun').click();
+        if (!el('wpPause').hidden) return {error:'Unexpected pause on a legacy strategy'};
+        return {ready:true};
+    })())'''.replace('POLICY', json.dumps(policy)), r'''JSON.stringify((()=>{
+        const el=id=>document.getElementById(id), status=el('wpStatus');
+        if (status.classList.contains('w2-error')) return {error:status.textContent};
+        if (!el('wpStop').hidden) return {waiting:'personal legacy worker'};
+        if (!el('wpResults').querySelector('details') || el('wpExport').disabled)
+            return {error:'No exportable candidate from personal legacy worker'};
+        return {ready:true};
+    })())'''])
 
 pending = False
 def tick():

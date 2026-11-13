@@ -237,8 +237,6 @@
                 const position = state.talents.indexOf(action.removedId);
                 if (position < 0) throw new Error(`路线回放失败：找不到待置换天赋 ${action.removedId}`);
                 state = ctx.engine.replace(state, position, action.keepIds).state;
-            } else if (action.kind === 'openSlot') {
-                state = {...root.AutoWash2Engine.cloneState(state), zizhi: state.zizhi + 1};
             } else if (action.kind === 'upgrade') {
                 state = typeof ctx.engine.upgradeToFour === 'function'
                     ? ctx.engine.upgradeToFour(state)
@@ -256,7 +254,6 @@
     }
 
     function stepLabel(group, engine) {
-        if (group.kind === 'openSlot') return `开启第 ${group.after.zizhi - 150} 槽`;
         if (group.kind === 'upgrade') return '开启第四脉';
         if (group.kind === 'unlock') return '毁脉：解除临时紫脉锁定';
         if (group.kind === 'exchange') return '置换冲突紫脉';
@@ -269,16 +266,11 @@
     }
 
     function stepDetail(group, engine) {
-        if (group.kind === 'openSlot') return '提升资质开槽，保持当前脉序。';
         if (group.kind === 'upgrade') return '在当前三脉状态开启第四脉；开槽本身不推进洗髓种子。';
         if (group.kind === 'unlock') {
             return `解除「${(group.releasedIds || []).map(id => engine.name(id)).join('、')}」的保护，作为毁脉临时支点继续洗；该动作本身不推进随机状态。`;
         }
         if (group.kind === 'exchange') {
-            if (group.mode === 'window-exchange' && group.keepIds.length) {
-                const locks = group.keepIds.map(id => engine.name(id)).join('、');
-                return `锁定「${locks}」，置换「${engine.name(group.removedId)}」，应得到「${engine.name(group.addedId)}」。`;
-            }
             return `点击置换「${engine.name(group.removedId)}」，应得到「${engine.name(group.addedId)}」。`;
         }
         const locks = group.keepIds.length
@@ -337,7 +329,7 @@
                 : (groups.some(group => group.mode === 'final-tail')
                     ? '源码规则 · 最近冲突脉回溯 + 第四紫尾脉扫描'
                     : '源码规则 · 三槽前推 + 最近冲突脉回溯 + 完整置换窗口'),
-            slotPath: [initialSlots, ...groups.filter(group => ['upgrade', 'openSlot'].includes(group.kind)).map(group => group.after.zizhi - 150)]
+            slotPath: [initialSlots, ...groups.filter(group => group.kind === 'upgrade').map(() => 4)]
                 .filter((value, index, values) => index === 0 || value !== values[index - 1]),
             totalPills: node.cost, totalWashes: cumulativeWashes,
             totalTalentBars: cumulativeTalentBars,
@@ -1513,7 +1505,6 @@
         }
     }
 
-    const routeActions = Object.freeze({actionWash, actionReplace, actionUpgrade, traceAppend, routeFromNode});
-    root.AutoWash2Optimizer = Object.freeze({ searchWashRoutes, MinHeap, compactActions, routeActions });
+    root.AutoWash2Optimizer = Object.freeze({ searchWashRoutes, MinHeap, compactActions });
 })(typeof window !== 'undefined' ? window : globalThis);
 

@@ -30,7 +30,7 @@ if (!isMainThread) {
 }
 if (!['windows', 'personal', 'fair', 'quick', 'worker', 'original'].includes(mode) || !targets.length)
     throw Error('Expected MODE SAVE ROLE BUDGET SECONDS TARGET...');
-importScripts('auto_wash2_worker.js');
+importScripts(['windows','personal','fair','quick'].includes(mode) ? 'personal_wash_worker.js' : 'auto_wash2_worker.js');
 const save = JSON.parse(fs.readFileSync(saveFile));
 const role = [save.MainRole, ...Object.values(save.Roles)].find(r => r?.Name === name);
 const id = name => {
@@ -76,11 +76,11 @@ async function main() {
     } else if (mode === 'fair' || mode === 'quick') {
         input.options.depthLevel = 2;
         input.options.maxZi = 154;
-        const scans = AutoWashConflictWindows.iterate(input, AutoWash2Model.combinations(input),
+        const scans = PersonalWashConflictWindows.iterate(input, AutoWash2Model.combinations(input),
             Infinity, collect, () => {}, true, mode === 'quick');
         for (const _ of scans) { /* drain all five layers */ }
     } else if (mode === 'windows') {
-        AutoWashConflictWindows.search(input, AutoWash2Model.combinations(input),
+        PersonalWashConflictWindows.search(input, AutoWash2Model.combinations(input),
             started + Number(seconds) * 1000, collect, () => {});
     } else {
         global.postMessage = event => {

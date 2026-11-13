@@ -1,7 +1,7 @@
 (function (root) {
     'use strict';
     const keyOf = state => root.AutoWash2Engine.stateKey(state);
-    const actions = () => root.AutoWash2Optimizer.routeActions;
+    const actions = () => root.PersonalWashRoutes;
     function context(input) {
         const raw = input.initialState;
         const engine = new root.AutoWash2Engine.Engine(root.TALENT_DATA, raw);

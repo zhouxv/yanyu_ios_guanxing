@@ -7,7 +7,7 @@
         const startState = engine.initialState(input.initialState);
         if (![153, 154].includes(startState.zizhi) || !branches.length) return;
         const {actionWash, actionReplace, actionUpgrade, traceAppend, routeFromNode} =
-            root.AutoWash2Optimizer.routeActions;
+            root.PersonalWashRoutes;
         const initialLocks = (input.initialState.talents || []).filter(t => t.locked).map(t => t.id);
         const wanted = new Set(branches.flat());
         const required = new Set(input.targetIds || []);
@@ -241,5 +241,5 @@
         do { result = jobs.next(); } while (!result.done);
         return result.value;
     }
-    root.AutoWashConflictWindows = {search, iterate};
+    root.PersonalWashConflictWindows = {search, iterate};
 })(self);

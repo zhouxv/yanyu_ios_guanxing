@@ -33,7 +33,6 @@
     }
     function search(input, targets, collect, progress, shouldCancel) {
         const raw = input.initialState, planner = root.AnchorRoutePlanner;
-        const byDepth = input.options?.searchPolicy === 'depth';
         const intensity = Math.max(1, Math.min(4,
             Math.trunc(Number(input.options?.searchIntensity) || 1)));
         // Locks describe the initial game state, not a permanent restriction.
@@ -62,23 +61,22 @@
             if (anchors.length !== targets.length || seen.has(key)) continue;
             seen.add(key);
             const choiceStarted = Date.now();
-            const pass = root.AnchorRouteSearch.run({mode: 'auto', raw, anchors, purples,
+            root.AnchorRouteSearch.run({mode: 'auto', raw, anchors, purples,
                 options: {targets, maxCost: Number(input.options?.maxTotalPills ?? 10000),
                     maxNodes: 3000 + (intensity - 1) * 2500,
                     sequenceBasis: 'theory2', exhaustive: true,
-                    perJobMs: byDepth ? 0 : 1000 + (intensity - 1) * 350,
+                    perJobMs: 1000 + (intensity - 1) * 350,
                     stages: [{limit:150 * intensity,depth:24 + (intensity - 1) * 8},
                         {limit:450 * intensity,depth:36 + (intensity - 1) * 12},
                         {limit:900 * intensity,depth:48 + (intensity - 1) * 16}],
                     shouldCancel: () => shouldCancel()
-                        || (!byDepth && Date.now() - choiceStarted > 20000 + (intensity - 1) * 10000)}}, packet => {
+                        || Date.now() - choiceStarted > 20000 + (intensity - 1) * 10000}}, packet => {
                 if (packet.type === 'progress') progress({message: `置换路线比较 · 序列 ${packet.pad} · 深度 ${packet.depth}`});
                 if (packet.candidate || packet.routes?.length) {
                     (packet.candidate ? [packet.candidate] : packet.routes).forEach(route => accept(route, anchors));
                 }
             });
-            bounded ||= byDepth ? !!pass?.meta?.stages?.some(stage => stage.bounded > 0)
-                : Date.now() - choiceStarted > 20000 + (intensity - 1) * 10000;
+            bounded ||= Date.now() - choiceStarted > 20000 + (intensity - 1) * 10000;
         }
         // Fast sequence comparison must not skip the legacy late-lock and slot
         // optimizations. Refine the best verified sequence with a separate budget.

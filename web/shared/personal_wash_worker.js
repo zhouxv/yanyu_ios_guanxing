@@ -2,7 +2,7 @@
 'use strict';
 self.window = self;
 importScripts('data.js','wash_source_engine.js','auto_wash2_source_cache.js','auto_wash2_engine.js',
-    'auto_wash2_optimizer.js','auto_wash2_model.js','auto_wash_conflict_windows.js',
+    'auto_wash2_optimizer.js','auto_wash2_model.js','personal_wash_routes.js','personal_wash_conflict_windows.js',
     'personal_wash_search.js','personal_wash_graph.js');
 let active;
 self.onmessage = async ({data}) => {
@@ -75,7 +75,7 @@ self.onmessage = async ({data}) => {
                     if (quick && searchCap === previousQuickCap) continue;
                     if (quick) previousQuickCap = searchCap;
                     const warm = {...input, options:{...opts,maxTotalPills:searchCap}};
-                    const runner = AutoWashConflictWindows.iterate(warm,branches,Infinity,
+                    const runner = PersonalWashConflictWindows.iterate(warm,branches,Infinity,
                         r => r.routes.forEach(accept), p => progress(p.message + ' · 上限 ' + searchCap + ' 丹'),true,quick);
                     try {
                         while (!job.skip && !runner.next().done) await checkpoint();
