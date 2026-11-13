@@ -16,6 +16,7 @@ const SEARCH_STAGES = Object.freeze([
 self.AutoWash2SearchPolicy = Object.freeze({initialSearchWindow, searchTimeLimit, stages: SEARCH_STAGES});
 importScripts('data.js', 'wash_source_engine.js', 'auto_wash2_source_cache.js', 'auto_wash2_engine.js', 'auto_wash2_optimizer.js', 'auto_wash2_model.js');
 importScripts('anchor_route_planner.js', 'anchor_route_search.js', 'auto_wash2_anchor.js');
+importScripts('auto_wash_conflict_windows.js');
 importScripts('auto_wash2_seed_planner.js', 'auto_wash2_seed.js');
 importScripts('auto_wash2_unified_anchor.js', 'auto_wash2_route_constructor.js',
     'auto_wash2_unified_route_constructor.js', 'auto_wash2_unified.js');
@@ -48,6 +49,51 @@ self.onmessage = async ({data: message}) => {
             if (found.size) send('candidate', {result: combined()});
         }
         let limited = false;
+        if (input.options?.searchPolicy === 'depth') {
+            const level = Math.min(3, Math.max(1, Math.trunc(Number(input.options.depthLevel) || 2)));
+            const intensity = [1, 2, 4][level - 1];
+            const budget = input.options.maxTotalPills ?? 5000;
+            let bestCost = Infinity;
+            const receive = result => {
+                for (const route of result?.routes || []) bestCost = Math.min(bestCost, route.totalPills);
+                collect(result);
+            };
+            const optimal = () => bestCost === 0;
+            const firstWashCost = Number(self.ZZ_DATA?.[input.initialState.zizhi]?.eat_xisui) || 0;
+            const domestic = !WashSourceEngine.isInternationalChannel(
+                input.initialState?.save_channel || input.initialState?.channel);
+            const progress = progress => send('progress', {progress});
+            const depthInput = {...input, options: {...input.options, depthLevel: level,
+                searchIntensity: intensity, maxTotalPills: budget}};
+            limited = !!AutoWashConflictWindows.search(depthInput, branches, Infinity, receive, progress);
+            for (const [index, targets] of branches.entries()) {
+                const cap = () => Math.min(budget, bestCost - 1);
+                if (cap() < 0) break;
+                const branchProgress = value => progress({...value,
+                    message: `目标组合 ${index + 1}/${branches.length} · ${value.message}`});
+                const options = () => ({...depthInput.options, maxTotalPills: cap()});
+                // Below the price of one wash only free moves are possible.
+                // The tactical pass still checks those (including exchanges).
+                if (cap() >= firstWashCost) {
+                    AutoWash2Seed.search({...depthInput, options: options()}, targets, receive,
+                        branchProgress, {intensity, timeBudgetMs: Infinity});
+                }
+                if (cap() < 0) break;
+                branchProgress({message: `战术搜索 · 最多 ${96 + (intensity - 1) * 16} 层关键操作`});
+                const result = await AutoWash2Optimizer.searchWashRoutes({...depthInput,
+                    talentData: TALENT_DATA, targetIds: targets, options: options(),
+                    onCandidate: receive, onProgress: branchProgress, shouldCancel: optimal});
+                limited ||= !!result.searchScope?.safetyLimitReached;
+                receive(result);
+                if (domestic && cap() > 0 && cap() >= firstWashCost) {
+                    const bounded = AutoWash2Anchor.search({...depthInput, options: options()},
+                        targets, receive, branchProgress, optimal);
+                    limited ||= bounded;
+                }
+            }
+            send('result', {result: {...combined(), limited}});
+            return;
+        }
         // First obtain a verified route. As soon as one is found, recompute the
         // remaining schedule around the current best cost instead of waiting
         // for a fixed feasibility phase to expire.
@@ -59,6 +105,11 @@ self.onmessage = async ({data: message}) => {
         const totalSearchMs = Number.isFinite(requestedSearchMs)
             ? Math.max(100, Math.min(maxSearchMs, requestedSearchMs)) : maxSearchMs;
         const totalDeadline = searchStarted + totalSearchMs;
+        if (totalSearchMs >= 10000) {
+            AutoWashConflictWindows.search(input, branches,
+                searchStarted + Math.min(45000, totalSearchMs * 0.08), collect,
+                progress => send('progress', {progress}));
+        }
         const userBudget = Math.max(0, Math.trunc(Number(input.options?.maxTotalPills ?? 5000)));
         const isInternational = WashSourceEngine.isInternationalChannel(
             input.initialState?.save_channel || input.initialState?.channel);

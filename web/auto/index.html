@@ -168,6 +168,7 @@
                     <button id="btnAutoJianwangMode" class="auto-mode-tab" type="button" role="tab" aria-selected="false" aria-controls="autoJianwangModePanel">剑王阁</button>
                     <button id="btnAutoWashMode" class="auto-mode-tab" type="button" role="tab" aria-selected="false" aria-controls="autoWashModePanel">自动洗脉</button>
                     <button id="btnAutoWash2Mode" class="auto-mode-tab" type="button" role="tab" aria-selected="false" aria-controls="autoWash2ModePanel">自动洗脉(改进)</button>
+                    <button id="btnPersonalWashMode" class="auto-mode-tab" type="button" role="tab" aria-selected="false" aria-controls="personalWashModePanel">自动模拟（自用）</button>
                 </div>
             </section>
 
@@ -183,6 +184,7 @@
 
                 <div id="autoWashModePanel" class="auto-mode-panel anchor-auto-mode-panel" role="tabpanel" aria-labelledby="btnAutoWashMode" hidden></div>
                 <div id="autoWash2ModePanel" class="auto-mode-panel" role="tabpanel" aria-labelledby="btnAutoWash2Mode" hidden></div>
+                <div id="personalWashModePanel" class="auto-mode-panel" role="tabpanel" aria-labelledby="btnPersonalWashMode" hidden></div>
 
                 <div id="autoEquipModePanel" class="auto-mode-panel equip-auto-panel" role="tabpanel" aria-labelledby="btnAutoEquipMode">
                     <div class="equip-auto-snapshot-note">
@@ -442,6 +444,7 @@
     <script src="../shared/simulator.js?v=20260930fix1"></script>
     <script src="../shared/auto_wash2_model.js"></script>
     <script src="../shared/auto_wash2.js"></script>
+    <script src="../shared/auto_wash2.js" data-personal="true"></script>
     <script>
     (function () {
         function diagnose() {

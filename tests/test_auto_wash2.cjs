@@ -38,6 +38,32 @@ raw.talents[0].locked = false;
 raw.global_vars.test = 9;
 assert.equal(JSON.stringify({save, role}), before, 'adapter must not mutate imported save');
 const converted = model.snapshot(save, role, {vip: 2});
+// Derive the target from a fresh synthetic roll rather than a named character
+// or a known route. At a one-wash ceiling the legal result is unambiguous.
+for (const zizhi of [153, 154]) {
+    let checked = false;
+    for (let seed = 1; seed < 200 && !checked; seed++) {
+        const start = {...converted, seed, zizhi, talents: [], tal_lucky: 100000};
+        const engine = new sandbox.AutoWash2Engine.Engine(sandbox.TALENT_DATA, start);
+        const once = engine.wash(engine.initialState(start), []);
+        const target = once.state.talents.find(id => engine.quality(id) === 4);
+        if (!target) continue;
+        for (const cap of [once.cost - 1, once.cost]) {
+            const routes = [];
+            sandbox.AutoWashConflictWindows.search({initialState:start, targetIds:[target],
+                options:{maxTotalPills:cap}}, [[target]], Date.now()+3000,
+                value => routes.push(...value.routes), () => {});
+            assert.equal(routes.length, cap === once.cost ? 1 : 0);
+            if (routes.length) {
+                assert.equal(routes[0].verified, true);
+                assert.equal(routes[0].totalPills, once.cost);
+                assert.equal(routes[0].totalWashes, 1);
+            }
+        }
+        checked = true;
+    }
+    assert.ok(checked, 'synthetic sample contains a rollable purple');
+}
 assert.equal(converted.luck_seed_inited, false);
 const data = {271: {weight: 4}, 272: {weight: 4}, 250: {weight: 4}};
 const selection = model.targets(converted, new Map([[272, 0], [250, 0]]), data);
@@ -69,6 +95,24 @@ async function send(type, payload) {
     assert.equal(expandedScope.searchScope.maxEventDepth, 128);
     const input = {initialState: converted, targetIds: [271], compatibleGroups: [], bagPills: 100,
         hasBagPills: true, options: {maxTotalPills: 0}};
+    // Advance the clock by one hour on every read. Depth mode must still
+    // visit its defined search space, including a real one-wash candidate.
+    const depthRaw = {...converted, talents: [], tal_lucky:100000};
+    const depthEngine = new sandbox.AutoWash2Engine.Engine(sandbox.TALENT_DATA, depthRaw);
+    const one = depthEngine.wash(depthEngine.initialState(depthRaw), []);
+    const depthPurple = one.state.talents.find(id => depthEngine.quality(id) === 4);
+    assert.ok(depthPurple);
+    let clock = 0;
+    sandbox.Date = class extends Date { static now() { return clock += 3600000; } };
+    try {
+        for (const depthLevel of [1, 2, 3]) {
+            const packets = await send('search', {input: {...input, initialState:depthRaw,
+                targetIds:[depthPurple], options:{searchPolicy:'depth', depthLevel, maxTotalPills:one.cost}}});
+            assert.equal(packets.find(p => p.type === 'result').result.routes[0].totalPills, one.cost);
+            assert.ok(packets.some(p => p.progress?.message.includes('1/' + (2 * depthLevel + 1))));
+            assert.ok(packets.some(p => p.progress?.message.includes('战术搜索 · 最多')));
+        }
+    } finally { sandbox.Date = Date; }
     rows = await send('search', {input});
     let result = rows.find(r => r.type === 'result').result;
     assert.ok(result.routes.length > 0);

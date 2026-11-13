@@ -212,88 +212,88 @@ html[data-theme="light"] .app-footer,
 html[data-theme="light"] footer {
     color: #5d7089 !important;
 }
-html[data-theme="light"] #autoWash2ModePanel {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) {
     color: var(--text-primary, #202d40);
 }
-html[data-theme="light"] #autoWash2ModePanel .w2-note {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-note {
     border: 1px solid #a3cbbd;
     background: #e7f4ee;
 }
-html[data-theme="light"] #autoWash2ModePanel .w2-note strong {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-note strong {
     color: #156b57;
 }
-html[data-theme="light"] #autoWash2ModePanel .w2-section {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-section {
     border: 1px solid var(--border-color, #d1dcea);
     background: var(--bg-card, #ffffff);
 }
-html[data-theme="light"] #autoWash2ModePanel h3 > span {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) h3 > span {
     color: #137c69;
 }
-html[data-theme="light"] #autoWash2ModePanel h3 > strong {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) h3 > strong {
     color: #7752aa;
 }
-html[data-theme="light"] #autoWash2ModePanel label {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) label {
     color: #435a76;
 }
-html[data-theme="light"] #autoWash2ModePanel select,
-html[data-theme="light"] #autoWash2ModePanel input {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) select,
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) input {
     border: 1px solid #d1dcea;
     color: #202d40;
     background: #f2f5fa;
 }
-html[data-theme="light"] #autoWash2ModePanel .w2-stock {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-stock {
     color: #5d7089;
 }
-html[data-theme="light"] #autoWash2ModePanel .w2-stock strong {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-stock strong {
     color: #906114;
 }
-html[data-theme="light"] #autoWash2ModePanel .w2-muted {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-muted {
     color: #5d7089;
 }
-html[data-theme="light"] #autoWash2ModePanel .w2-lock,
-html[data-theme="light"] #autoWash2ModePanel .w2-target {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-lock,
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-target {
     border: 1px solid #d1dcea;
     background: #f2f5fa;
     color: #202d40;
 }
-html[data-theme="light"] #autoWash2ModePanel .w2-lock span {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-lock span {
     color: #5d7089;
 }
-html[data-theme="light"] #autoWash2ModePanel .w2-target small {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-target small {
     color: #5d7089;
 }
-html[data-theme="light"] #autoWash2ModePanel .is-selected {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .is-selected {
     background: #eee7f8;
     border-color: #a58ac6;
     color: #694294;
 }
-html[data-theme="light"] #autoWash2ModePanel button:focus-visible {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) button:focus-visible {
     outline: 2px solid #137c69;
 }
-html[data-theme="light"] #autoWash2ModePanel .w2-requirements {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-requirements {
     color: #7752aa;
 }
-html[data-theme="light"] #autoWash2ModePanel #w2Status {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) :is(#w2Status, #wpStatus) {
     color: #5d7089;
 }
-html[data-theme="light"] #autoWash2ModePanel #w2Status.w2-error {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) :is(#w2Status, #wpStatus).w2-error {
     color: #b7352c;
 }
-html[data-theme="light"] #autoWash2ModePanel .w2-route {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-route {
     border: 1px solid #d1dcea;
     background: #ffffff;
 }
-html[data-theme="light"] #autoWash2ModePanel .w2-route summary > span {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-route summary > span {
     color: #137c69;
 }
-html[data-theme="light"] #autoWash2ModePanel .w2-route > p {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) .w2-route > p {
     color: #435a76;
 }
-html[data-theme="light"] #autoWash2ModePanel th,
-html[data-theme="light"] #autoWash2ModePanel td {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) th,
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) td {
     border-bottom: 1px solid #d1dcea;
 }
-html[data-theme="light"] #autoWash2ModePanel td small {
+html[data-theme="light"] :is(#autoWash2ModePanel, #personalWashModePanel) td small {
     color: #7752aa;
 }
 

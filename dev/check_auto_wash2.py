@@ -62,7 +62,11 @@ def received(value):
         elif stage == 3:
             if Store(temp.name).theme() != 'light':
                 return fail('Native theme button did not persist preference')
-            print('PASS: worker result, native theme, legacy tab isolation and cancellation', flush=True)
+            stage = 4
+        elif stage < len(scripts) - 1:
+            stage += 1
+        else:
+            print('PASS: both workers, personal proof, pause/resume, tab isolation and disk frontier', flush=True)
             window.close()
             app.exit(0)
     except Exception as error:
@@ -70,7 +74,8 @@ def received(value):
 
 scripts = [r'''JSON.stringify((()=>{
     if (!window.AutoWash2 || !state.saveData || !state.saveRoles?.length) {
-        return {waiting:'save import'};
+        return {waiting:'save import',module:!!window.AutoWash2,stored:!!window.loadShareStore?.()?.data,
+            roles:window.state?.saveRoles?.length};
     }
     // Import and WASM initialization finish independently. The DOM can already
     // contain saveRoles while the legacy tab listeners and role options are not
@@ -109,7 +114,8 @@ scripts = [r'''JSON.stringify((()=>{
     if (document.documentElement.dataset.theme !== 'light') return {waiting:'native theme application'};
     if (JSON.stringify(state) !== w2Baseline) return {error:'Search mutated legacy simulator state'};
     const tabs = [['btnAutoEquipMode','autoEquipModePanel'], ['btnAutoJianwangMode','autoJianwangModePanel'],
-        ['btnAutoWashMode','autoWashModePanel'], ['btnAutoWash2Mode','autoWash2ModePanel']];
+        ['btnAutoWashMode','autoWashModePanel'], ['btnPersonalWashMode','personalWashModePanel'],
+        ['btnAutoWash2Mode','autoWash2ModePanel']];
     for (const [button, panel] of tabs) {
         document.getElementById(button).click();
         if (document.getElementById(panel).hidden || tabs.filter(([,p])=>!document.getElementById(p).hidden).length !== 1)
@@ -123,6 +129,86 @@ scripts = [r'''JSON.stringify((()=>{
     if (document.getElementById('w2Run').disabled || !document.getElementById('w2Stop').hidden) return {error:'Stop failed'};
     return {ready:true};
 })())''']
+
+scripts.extend([r'''JSON.stringify((()=>{
+    const el=id=>document.getElementById(id);
+    el('btnPersonalWashMode').click();
+    if (el('personalWashModePanel').hidden || !el('autoWash2ModePanel').hidden) return {error:'personal tab visibility'};
+    if (el('wpRole').value || el('wpBudget').value === '1') return {error:'settings shared between tabs'};
+    el('wpRole').value=state.saveRoles[0].key;
+    el('wpRole').dispatchEvent(new Event('change'));
+    return {ready:true};
+})())''', r'''JSON.stringify((()=>{
+    const el=id=>document.getElementById(id);
+    if (el('wpStatus').classList.contains('w2-error')) return {error:el('wpStatus').textContent};
+    if (el('wpRun').disabled) return {waiting:el('wpStatus').textContent};
+    el('wpBudget').value=0;
+    el('wpBudget').dispatchEvent(new Event('input'));
+    el('wpRun').click();
+    return {ready:true};
+})())''', r'''JSON.stringify((()=>{
+    const el=id=>document.getElementById(id);
+    if (el('wpStatus').classList.contains('w2-error')) return {error:el('wpStatus').textContent};
+    if (!el('wpStatus').textContent.includes('已证最低')) return {waiting:el('wpStatus').textContent};
+    if (!el('wpResults').querySelector('details') || el('wpExport').disabled) return {error:'missing exportable result'};
+    if (el('w2Budget').value !== '1') return {error:'modified other tabs budget'};
+    el('wpBudget').value=1000;
+    el('wpBudget').dispatchEvent(new Event('input'));
+    el('wpTargets').querySelector('[data-id="272"]').click();
+    el('wpRun').click();
+    return {ready:true};
+})())''', r'''JSON.stringify((()=>{
+    const el=id=>document.getElementById(id);
+    if (el('wpStatus').classList.contains('w2-error')) return {error:el('wpStatus').textContent};
+    if (!window.skipSent) {
+        if (!el('wpSkip').hidden) el('wpSkip').click();
+        else if (!el('wpStatus').textContent.includes('穷举')) return {waiting:'worker startup'};
+        window.skipSent=true;
+    }
+    if(!el('wpSkip').hidden) return {waiting:'strategy ending'};
+    el('wpPause').click();
+    return {ready:true};
+})())''', r'''JSON.stringify((()=>{
+    const el=id=>document.getElementById(id);
+    if (el('wpStatus').classList.contains('w2-error')) return {error:el('wpStatus').textContent};
+    if (el('wpPause').textContent !== '继续') return {waiting:el('wpStatus').textContent};
+    el('btnAutoWash2Mode').click(); el('btnPersonalWashMode').click();
+    el('wpPause').click();
+    return {ready:true};
+})())''', r'''JSON.stringify((()=>{
+    const el=id=>document.getElementById(id);
+    if (el('wpPause').textContent !== '暂停') return {waiting:el('wpStatus').textContent};
+    el('wpStop').click();
+    if(!el('wpPause').hidden || el('wpRun').disabled) return {error:'cancel failed'};
+    if(JSON.stringify(state)!==w2Baseline) return {error:'modified imported simulation state'};
+    window.diskTest='running';
+    (async()=>{
+        for(const file of ['auto_wash2_optimizer.js','personal_wash_graph.js']) {
+            const script=document.createElement('script'); script.src='../shared/'+file;
+            await new Promise((ok,fail)=>{script.onload=ok;script.onerror=fail;document.head.appendChild(script);});
+        }
+        const db='wash-test-'+crypto.randomUUID();
+        const graph=new PersonalWashGraph(db,1);
+        const row=(key,cost)=>({key,cost,pending:cost});
+        const successors=(...rows)=>new Map(rows.map(r=>[r.key,r]));
+        try {
+            await graph.commit([],successors(row('a',0),row('b',5)));
+            if(!graph.db) throw Error('spill missing');
+            const batch=await graph.take(64);
+            if(batch.length!==1 || batch[0].key!=='a') throw Error('incorrect first disk layer');
+            await graph.commit(batch,successors(row('a',0),row('b',2),row('c',0)));
+            const zero=await graph.take(64);
+            if(zero.length!==1 || zero[0].key!=='c') throw Error('incomplete zero-cost closure');
+            await graph.commit(zero,successors(row('b',4)));
+            const next=await graph.take(64);
+            if(next.length!==1 || next[0].cost!==2) throw Error('incorrect distance on disk');
+            await graph.commit(next,new Map());
+            if((await graph.take(1)).length || (await graph.read('b')).cost!==2) throw Error('disk predecessor');
+        } finally {graph.close();indexedDB.deleteDatabase(db);}
+        window.diskTest='ok';
+    })().catch(e=>window.diskTest='error '+e);
+    return {ready:true};
+})())''', '''JSON.stringify(diskTest==='ok'?{ready:true}:diskTest==='running'?{waiting:diskTest}:{error:diskTest})'''])
 
 pending = False
 def tick():
@@ -144,7 +230,16 @@ timer = QTimer()
 timer.setInterval(500)
 timer.timeout.connect(tick)
 def start():
-    window.view.setUrl(QUrl(window.site.url + 'auto/index.html'))
-    timer.start()
+    def loaded(value):
+        if value == 'ready':
+            window.view.setUrl(QUrl(window.site.url + 'auto/index.html'))
+            timer.start()
+        elif home_tries[0] < 120:
+            home_tries[0] += 1
+            QTimer.singleShot(250, start)
+        else:
+            fail('Home did not finish importing its snapshot')
+    window.page.runJavaScript("window.loadShareStore?.()?.data ? 'ready' : 'loading'", 0, loaded)
+home_tries = [0]
 QTimer.singleShot(500, start)
 sys.exit(app.exec())
