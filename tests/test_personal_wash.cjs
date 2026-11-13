@@ -52,40 +52,48 @@ function report(route) {
     return '路线 1：' + route.totalPills + ' 丹\n' +
         route.steps.map((s,i)=>(i+1)+'. '+s.label+'：'+s.detail).join('\n');
 }
-async function checkDepthWorker() {
-    let clock = 0;
-    const messages = [];
-    const context = vm.createContext({console,TextEncoder,TextDecoder,performance,atob,setTimeout,clearTimeout,
-        Date:class extends Date { static now() { return clock += 3600000; } },
-        postMessage:message=>messages.push(message)});
-    context.self = context;
-    context.importScripts = (...files) => files.forEach(file => vm.runInContext(
-        fs.readFileSync(path.join(__dirname,'../web/shared',file),'utf8'),context,{filename:file}));
-    context.importScripts('personal_wash_depth_worker.js');
-    for (const zizhi of [153,154]) {
-        const start = {...raw,zizhi};
-        const engine = new AutoWash2Engine.Engine(TALENT_DATA,start);
-        const once = engine.wash(engine.initialState(start),[]);
-        const purple = once.state.talents.find(id=>engine.quality(id)===4);
-        assert.ok(purple);
-        for (const depthLevel of [1,2,3]) {
+async function checkStrategyWorkflow() {
+    const engine = new AutoWash2Engine.Engine(TALENT_DATA,raw);
+    const once = engine.wash(engine.initialState(raw),[]);
+    const purple = once.state.talents.find(id=>engine.quality(id)===4);
+    assert.ok(purple);
+    for (const depthLevel of [1,2,3]) {
+        for (const autoExact of [false,true]) {
             for (const cap of [once.cost-1,once.cost]) {
-                messages.length = 0;
-                const job = input(start,[purple],[],cap,zizhi);
-                Object.assign(job.options,{searchPolicy:'depth',depthLevel});
-                await context.onmessage({data:{type:'search',requestId:1,input:job}});
-                assert.ok(!messages.some(m=>m.type==='error'),JSON.stringify(messages.at(-1)));
-                assert.ok(messages.some(m=>m.progress?.message.includes('1/'+(2*depthLevel+1))));
-                assert.ok(messages.some(m=>m.progress?.message.includes('战术搜索')));
-                const route = messages.at(-1).result.routes[0];
-                if (cap < once.cost) assert.equal(route,undefined);
-                else assert.ok(route?.verified && route.totalPills===once.cost && route.totalWashes===1);
+                const job = input(raw,[purple],[],cap,raw.zizhi);
+                Object.assign(job.options,{depthLevel,strategyFirst:true,autoExact});
+                const messages = [];
+                let notifyWaiting;
+                const waiting = new Promise(resolve=>{notifyWaiting=resolve;});
+                global.postMessage = m=>{
+                    messages.push(m);
+                    if (m.phase==='awaitingExact') notifyWaiting();
+                };
+                const finished = self.onmessage({data:{type:'search',requestId:4,input:job}});
+                if (!autoExact) {
+                    await Promise.race([waiting,finished]);
+                    assert.equal(messages.at(-1).phase,'awaitingExact');
+                    const best = messages.find(m=>m.type==='candidate')?.result.routes[0];
+                    assert.equal(best?.totalPills,cap===once.cost ? cap : undefined);
+                    await self.onmessage({data:{type:'exact',requestId:3}});
+                    await new Promise(resolve=>setTimeout(resolve,10));
+                    assert.ok(!messages.some(m=>m.phase==='exact' || m.type==='result'));
+                    await self.onmessage({data:{type:'exact',requestId:4}});
+                    await self.onmessage({data:{type:'exact',requestId:4}});
+                }
+                await finished;
+                assert.equal(messages.filter(m=>m.phase==='awaitingExact').length,autoExact ? 0 : 1);
+                assert.equal(messages.filter(m=>m.phase==='exact').length,1);
+                assert.ok(messages.some(m=>m.progress?.layers===2*depthLevel+1 && m.progress.layer===1));
+                const result = messages.at(-1).result;
+                assert.equal(result.proof,cap===once.cost ? 'optimal' : 'infeasible');
+                if (cap===once.cost) assert.equal(result.routes[0].totalPills,cap);
             }
         }
     }
 }
 async function main() {
-    await checkDepthWorker();
+    await checkStrategyWorkflow();
     let checks = 0;
     const engine = new AutoWash2Engine.Engine(TALENT_DATA,raw);
     const carrier = engine.purpleIds.find(id=>!engine.isShenmai(id) &&

@@ -192,7 +192,10 @@
             washLimit = Math.floor(layerBudget * 0.8);
             const now = Date.now();
             phaseDeadline = now + (deadline - now) * (depth === 0 ? 0.25 : depth < 3 ? 0.55 : 1);
-            progress({message: (quick ? '邻近前置和连续置换' : '冲突脉回溯') + ' · 第 ' + (depth + 1) + '/' + layers + ' 层'});
+            const method = quick ? '邻近前置和连续置换' : '冲突脉回溯';
+            const report = () => progress({method,layer:depth + 1,layers,washes,
+                message: method + ' · 第 ' + (depth + 1) + '/' + layers + ' 层'});
+            report();
             frontier = new Map();
             windows.clear();
             function* runLayer(items, explore) {
@@ -216,7 +219,10 @@
                     const next = [];
                     for (const job of active) {
                         if (expired()) break;
-                        if (!job.next().done) next.push(job);
+                        if (!job.next().done) {
+                            next.push(job);
+                            if (washes && washes % 16384 === 0) report();
+                        }
                         yield;
                     }
                     active = next;

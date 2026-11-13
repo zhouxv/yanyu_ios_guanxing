@@ -68,7 +68,7 @@ async function main() {
                 worker.on('message',message=>{
                     if (message.type === 'error') reject(Error(message.error));
                     if (message.result) collect(message.result);
-                    if (message.phase === 'exact' || message.type === 'result') resolve();
+                    if (message.phase === 'awaitingExact' || message.type === 'result') resolve();
                 });
                 worker.postMessage({type:'search',input,requestId:1});
             });

@@ -100,9 +100,6 @@ html[data-theme="light"] #personalWashModePanel button:focus-visible {
 html[data-theme="light"] #personalWashModePanel .w2-requirements {
     color: #7752aa;
 }
-html[data-theme="light"] #personalWashModePanel #wpStatus {
-    color: #5d7089;
-}
 html[data-theme="light"] #personalWashModePanel #wpStatus.w2-error {
     color: #b7352c;
 }
@@ -123,3 +120,30 @@ html[data-theme="light"] #personalWashModePanel td {
 html[data-theme="light"] #personalWashModePanel td small {
     color: #7752aa;
 }
+
+#personalWashModePanel .wp-auto {
+    display: flex; align-items: center; gap: .6rem; min-width: 0; margin: 20px 0 12px;
+    font-size: 15px; cursor: pointer;
+}
+#personalWashModePanel .wp-auto input {
+    width: 18px; height: 18px; min-height: 0; margin: 0; accent-color: #178573;
+}
+#personalWashModePanel .wp-status-box {
+    --accent: #71d9c1; --surface: #182a2c;
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px 24px;
+    padding: 16px 20px; border-inline-start: 5px solid var(--accent); border-radius: 8px;
+    background: var(--surface); color: var(--text-primary, #e6edf6);
+}
+#personalWashModePanel .wp-status-box[data-state="exact"] { --accent: #bba1ff; --surface: #28233a; }
+#personalWashModePanel .wp-status-box[data-state="awaitingExact"] { --accent: #edc27a; --surface: #302b21; }
+#personalWashModePanel .wp-status-box[data-state="error"] { --accent: #ff9898; }
+html[data-theme="light"] #personalWashModePanel .wp-status-box { --accent: #137764; --surface: #e6f3ef; }
+html[data-theme="light"] #personalWashModePanel .wp-status-box[data-state="exact"] { --accent: #6e4cb0; --surface: #f1edfa; }
+html[data-theme="light"] #personalWashModePanel .wp-status-box[data-state="awaitingExact"] { --accent: #885a12; --surface: #fbf3e3; }
+html[data-theme="light"] #personalWashModePanel .wp-status-box[data-state="error"] { --accent: #ae3333; }
+#personalWashModePanel .wp-status-box #wpStatus, #personalWashModePanel .wp-best strong {
+    font-size: 20px; line-height: 1.35; font-weight: 700; color: var(--accent);
+}
+#personalWashModePanel #wpDetail { margin: 6px 0 0; font-size: 14px; line-height: 1.6; }
+#personalWashModePanel .wp-best span { display: block; margin-bottom: 4px; font-size: 12px; }
+#personalWashModePanel .wp-best strong { font-variant-numeric: tabular-nums; }

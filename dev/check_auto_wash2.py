@@ -138,6 +138,7 @@ scripts.extend([r'''JSON.stringify((()=>{
     el('btnPersonalWashMode').click();
     if (el('personalWashModePanel').hidden || !el('autoWash2ModePanel').hidden) return {error:'personal tab visibility'};
     if (el('wpRole').value || el('wpBudget').value === '1') return {error:'settings shared between tabs'};
+    if (el('wpDepth').value!=='2' || el('wpAutoExact').checked || el('wpDepth').querySelector('[value^=depth]')) return {error:'Unexpected personal defaults'};
     el('wpRole').value=state.saveRoles[0].key;
     el('wpRole').dispatchEvent(new Event('change'));
     return {ready:true};
@@ -152,9 +153,19 @@ scripts.extend([r'''JSON.stringify((()=>{
 })())''', r'''JSON.stringify((()=>{
     const el=id=>document.getElementById(id);
     if (el('wpStatus').classList.contains('w2-error')) return {error:el('wpStatus').textContent};
+    if (el('wpExact').hidden) return {waiting:el('wpStatus').textContent};
+    if (!el('wpStatus').textContent.includes('等待手动穷举') || el('wpBest').textContent!=='0 丹')
+        return {error:'Missing waiting status or zero-cost candidate'};
+    el('btnAutoWash2Mode').click(); el('btnPersonalWashMode').click();
+    el('wpExact').click();
+    return {ready:true};
+})())''', r'''JSON.stringify((()=>{
+    const el=id=>document.getElementById(id);
+    if (el('wpStatus').classList.contains('w2-error')) return {error:el('wpStatus').textContent};
     if (!el('wpStatus').textContent.includes('已证最低')) return {waiting:el('wpStatus').textContent};
     if (!el('wpResults').querySelector('details') || el('wpExport').disabled) return {error:'missing exportable result'};
     if (el('w2Budget').value !== '1') return {error:'modified other tabs budget'};
+    el('wpAutoExact').checked=true;
     el('wpBudget').value=1000;
     el('wpBudget').dispatchEvent(new Event('input'));
     el('wpTargets').querySelector('[data-id="272"]').click();
@@ -163,12 +174,8 @@ scripts.extend([r'''JSON.stringify((()=>{
 })())''', r'''JSON.stringify((()=>{
     const el=id=>document.getElementById(id);
     if (el('wpStatus').classList.contains('w2-error')) return {error:el('wpStatus').textContent};
-    if (!window.skipSent) {
-        if (!el('wpSkip').hidden) el('wpSkip').click();
-        else if (!el('wpStatus').textContent.includes('穷举')) return {waiting:'worker startup'};
-        window.skipSent=true;
-    }
-    if(!el('wpSkip').hidden) return {waiting:'strategy ending'};
+    if (el('wpStatusBox').dataset.state!=='exact') return {waiting:el('wpStatus').textContent};
+    if (!el('wpExact').hidden) return {error:'Automatic run waited for manual confirmation'};
     el('wpPause').click();
     return {ready:true};
 })())''', r'''JSON.stringify((()=>{
@@ -212,25 +219,6 @@ scripts.extend([r'''JSON.stringify((()=>{
     })().catch(e=>window.diskTest='error '+e);
     return {ready:true};
 })())''', '''JSON.stringify(diskTest==='ok'?{ready:true}:diskTest==='running'?{waiting:diskTest}:{error:diskTest})'''])
-
-for policy in ['depth-1', 'timed']:
-    scripts.extend([r'''JSON.stringify((()=>{
-        const el=id=>document.getElementById(id);
-        el('wpClear').click(); // Keep the synthetic save's locked starting purple.
-        el('wpDepth').value=POLICY; el('wpDepth').dispatchEvent(new Event('change'));
-        if (!el('wpReference').disabled || !el('wpSlots').disabled) return {error:'Wrong legacy controls'};
-        el('wpBudget').value=0; el('wpBudget').dispatchEvent(new Event('input'));
-        el('wpRun').click();
-        if (!el('wpPause').hidden) return {error:'Unexpected pause on a legacy strategy'};
-        return {ready:true};
-    })())'''.replace('POLICY', json.dumps(policy)), r'''JSON.stringify((()=>{
-        const el=id=>document.getElementById(id), status=el('wpStatus');
-        if (status.classList.contains('w2-error')) return {error:status.textContent};
-        if (!el('wpStop').hidden) return {waiting:'personal legacy worker'};
-        if (!el('wpResults').querySelector('details') || el('wpExport').disabled)
-            return {error:'No exportable candidate from personal legacy worker'};
-        return {ready:true};
-    })())'''])
 
 pending = False
 def tick():
