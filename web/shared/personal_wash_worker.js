@@ -1,7 +1,9 @@
 /* Dedicated worker for the personal tab. The original tab uses its own worker. */
 'use strict';
 self.window = self;
-importScripts('data.js','wash_source_engine.js','auto_wash2_source_cache.js','auto_wash2_engine.js',
+importScripts('data.js','born_talent_data.js','battle_talent_data.js','life_hedao_data.js',
+    'extra_attr_data.js','equip_data.js','kongfu_data.js','../role/role.js','wash_role_context.js',
+    'wash_source_engine.js','auto_wash2_source_cache.js','auto_wash2_engine.js',
     'auto_wash2_optimizer.js','auto_wash2_model.js','personal_wash_routes.js','personal_wash_conflict_windows.js',
     'personal_wash_search.js','personal_wash_graph.js');
 let active;
@@ -9,8 +11,9 @@ self.onmessage = async ({data}) => {
     const send = (type,payload) => self.postMessage({type,requestId:data.requestId,...payload});
     if (data.type === 'inspect') {
         try {
-            const e = new AutoWash2Engine.Engine(TALENT_DATA,data.raw);
-            send('summary',{summary:{allowed:[...e.allowed],purpleIds:e.purpleIds}});
+            const engine = new AutoWash2Engine.Engine(TALENT_DATA,data.raw);
+            const initial = engine.initialState(data.raw);
+            send('summary',{summary:{allowed:[...engine.allowedForState(initial,initial.zizhi)],purpleIds:engine.purpleIds}});
         } catch (err) { send('error',{error:err.message}); }
         return;
     }

@@ -93,6 +93,16 @@ async function checkStrategyWorkflow() {
     }
 }
 async function main() {
+    // 青龙白虎 raises 54 Con above the 60 required for 五蕴皆空.
+    const thresholdRole = {ID:1, Type:1, Sex:1, Level:100, ZiZhi:154, BornCon:54, Talents:[]};
+    for (const [talents, eligible] of [[[],false],[[252],true]]) {
+        let reply;
+        global.postMessage = message => { reply = message; };
+        const snapshot = {...raw, zizhi:154, role_id:1, role_raw:thresholdRole, talents};
+        await self.onmessage({data:{type:'inspect', raw:snapshot, requestId:1}});
+        assert.equal(reply.type, 'summary', reply.error);
+        assert.equal(reply.summary.allowed.includes(239), eligible);
+    }
     await checkStrategyWorkflow();
     let checks = 0;
     const engine = new AutoWash2Engine.Engine(TALENT_DATA,raw);

@@ -170,7 +170,7 @@
         let layer = [start];
         const luckScores = new Map();
         function seedScore(node) {
-            const key = node.state.luckSeed + '/' + node.held.join(',');
+            const key = [node.state.luckSeed, node.state.talents.join(','), node.held.join(',')].join('/');
             if (luckScores.has(key)) return luckScores.get(key);
             let seed = node.state.luckSeed;
             const seen = new Set(node.held);
@@ -178,7 +178,7 @@
                 for (let i = 0, accepted = 0; i < 32 && accepted < 4; i++) {
                     const [id, next] = engine.draw(seed, true);
                     seed = next;
-                    if (!engine.isAllowedAt(id, 154) || seen.has(id)) continue;
+                    if (!engine.isAllowedAt(id, 154, node.state) || seen.has(id)) continue;
                     seen.add(id); accepted++;
                 }
             }

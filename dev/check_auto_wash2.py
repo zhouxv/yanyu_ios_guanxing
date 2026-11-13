@@ -74,8 +74,11 @@ def received(value):
 
 scripts = [r'''JSON.stringify((()=>{
     if (!window.AutoWash2 || !state.saveData || !state.saveRoles?.length) {
-        return {waiting:'save import',module:!!window.AutoWash2,stored:!!window.loadShareStore?.()?.data,
-            roles:window.state?.saveRoles?.length};
+        return {waiting:'save import', autoWash2:!!window.AutoWash2,
+            saveData:!!state.saveData, saveRoles:state.saveRoles?.length || 0,
+            stored:!!window.loadShareStore?.()?.data,
+            url:location.href, readyState:document.readyState,
+            pageError:document.querySelector('.error-message, #errorMessage')?.textContent || ''};
     }
     // Import and WASM initialization finish independently. The DOM can already
     // contain saveRoles while the legacy tab listeners and role options are not
