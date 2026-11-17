@@ -117,7 +117,7 @@ def label(pkg):
 
 
 def describe_all():
-    """`yyjh key list` / 文档里用的表格数据。"""
+    """渠道信息的表格数据。"""
     return [(c.name, c.key, c.pkg, c.suffix or '自动') for c in CHANNELS]
 
 

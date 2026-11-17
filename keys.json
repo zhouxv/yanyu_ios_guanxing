@@ -2,7 +2,7 @@
   "_说明": [
     "内层密钥表（可以任人分享、任意提交，跟账号无关）。",
     "inner_keys：runtime + 版本号 -> 16 位内层密钥（内层密钥 = psw(8) + suffix(8)）",
-    "新密钥：python -m yyjh key crack（会自动写进来）；并入别处的表：key import <文件>"
+    "新版本密钥随工程更新；手工维护时按 inner_keys 的现有格式填写。"
   ],
   "inner_keys": [
     {

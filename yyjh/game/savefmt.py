@@ -49,27 +49,6 @@ class InnerKeyMissing(ValueError):
         self.format = fmt
 
 
-def inner_key_missing_hints(exc):
-    """版本未知时给用户的"怎么办"清单。
-
-    layer1 / layer2 共用 —— 措辞必须一致，而且**第一句就要说清是游戏更新**，
-    否则用户只会觉得是自己操作错了，一遍遍重跑。
-    """
-    ver = getattr(exc, 'version', '?')
-    return [
-        f'存档版本号是 {ver}，密钥表里没有这一版 —— 多半是**游戏刚更新**，不是你操作的问题。',
-        '⚠ 别反复重跑 capture / local：密钥没变，重试多少遍都是同一个错，纯浪费时间。',
-        '怎么办（下面任一条成功，密钥就永久记进 keys.json，以后不用再管）:',
-        '  1. 打开游戏、进一次角色（密钥只在游戏运行时存在内存里），然后一把梭：',
-        '       python -m yyjh key crack',
-        '       （会自动去设备上找最新存档，扫内存把新密钥挖出来并存好）',
-        '  2. 第三方导出工具更新了的话，从它里面直接提表：',
-        '       python -m yyjh exe tables <导出工具.exe> --save',
-        f'  3. 已知密钥就手动补一条：python -m yyjh key add {ver} <16位密钥>',
-        '  4. 只想解这一次：加 --inner-key <16位密钥>',
-    ]
-
-
 # ─────────────────────────── 识别 ───────────────────────────
 def detect_format(content):
     """返回 OLD / NEW / None。"""

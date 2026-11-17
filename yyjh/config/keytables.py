@@ -13,9 +13,8 @@
   · 游戏进程内存实读（自己没越狱设备时，iOS 那几个只能靠别的途径）
   · 第三方导出工具的内嵌密钥表（它把版本/渠道密钥写在 exe 里了，搜字符串就能抠出来）
     在无越狱 iOS 设备的情况下，这是拿 iOS 内层密钥最省事的办法。
-更新游戏后: 跑 `python -m yyjh key crack` —— 自动去游戏内存里把新版本密钥挖出来
-写进 keys.json（**不动本文件**，下次更新也不用改代码）；
-或者 `python -m yyjh exe tables <工具.exe> --save` 从第三方导出工具里提表。
+游戏更新后，随工程更新 keys.json 中的版本密钥表；
+手工维护时按 inner_keys 的现有格式填写。
 """
 import json
 import os
@@ -107,13 +106,13 @@ def _write_json(path, data):
 KEYS_NOTE = [
     "内层密钥表（可以任人分享、任意提交，跟账号无关）。",
     "inner_keys：runtime + 版本号 -> 16 位内层密钥（内层密钥 = psw(8) + suffix(8)）",
-    "新密钥：python -m yyjh key crack（会自动写进来）；并入别处的表：key import <文件>",
+    "新版本密钥随工程更新；手工维护时按 inner_keys 的现有格式填写。",
 ]
 LOCAL_NOTE = [
     "本机 / 账号相关，**不要分享、不要提交**（已在 .gitignore 里）。",
     "outer_keys      ：账号 -> 16 位外层密钥（每账号一把，别人拿去也没用）",
     "outer_keys_by_id：save 表里的 id（md5）-> 16 位外层密钥",
-    "adb / serial / pkg：上次用的环境，留空就自动发现",
+    "adb / serial / pkg：旧工具留下的设备信息，桌面不使用",
 ]
 
 
@@ -280,7 +279,7 @@ def lookup_inner_key(runtime, version, extras=()):
         if cand and len(cand) == 16:
             return cand, '调用方指定'
 
-    return None, f'未知版本 {runtime}/{version}（请跑 `yyjh key crack` 或 `yyjh exe tables`）'
+    return None, f'未知版本 {runtime}/{version}（请更新工程中的 keys.json 密钥表）'
 
 
 def candidate_inner_keys(runtime, version):

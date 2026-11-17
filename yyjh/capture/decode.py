@@ -107,12 +107,8 @@ def inner_body(har_path, index=None, real_key=None, steps=None):
     """HAR -> 只做到「初版 content」为止。
 
     返回 dict: version / body / runtime / account / save_id / server / content
-    其中 body 是**内层 XXTEA 密文** —— 缺内层密钥时拿它去爆破
-    （`yyjh key crack --har` 就是这么干的）。
-
-    为什么单独抽出来：内层密钥不知道时，外层其实已经能免费解开 ——
-    抓包里的 realKey 顶替了那把只存在内存里的「外层密钥」，
-    所以「密钥表过期」根本不该妨碍我们从抓包里拿到爆破靶子。
+    其中 body 是内层 XXTEA 密文。先用抓包里的 realKey 解开网络外层，
+    再由调用方按版本和渠道选择内层密钥。
 
     ⚠ 会自动穷举「哪个 upload × 哪个 k 响应头 × 请求体怎么解码」：
     一次抓包里 k 常常有多份（登录 / startGame / 重启各一次），
@@ -293,7 +289,7 @@ def download_body(har_path, real_key=None, steps=None):
             f'download 响应的 data 不是初版存档壳（{e}）—— '
             'v73576+ 起 download3 响应用「auto」随机传输密钥包裹，'
             '密钥只在游戏内存里，被动抓包解不开；'
-            '请改用「主动下载当前云存档」（yyjh capture <har> --fetch）') from e
+            '请在桌面重新导入 HAR，或点击「下载最新云存档」') from e
     say('版本号', version)
 
     # ── extra -> psw（8 字符）× 渠道后缀 -> 内层密钥；

@@ -15,7 +15,7 @@ _THIS = os.path.abspath(__file__)
 YYJH_PKG = os.path.dirname(os.path.dirname(_THIS))      # .../tool_1.1/yyjh
 FROZEN = getattr(sys, 'frozen', False)
 if FROZEN:
-    # exe 打包：网页资源在包内（webserve 走 sys._MEIPASS 找 web/）。
+    # exe 打包：桌面从 sys._MEIPASS 读取包内网页资源。
     # 生成物（keys.json / output/）统一放 %LOCALAPPDATA%\yanyu-guanxing\，
     # exe 所在目录（桌面等）保持干净 —— 2026-10 起的新约定。
     TOOL_DIR = os.path.dirname(os.path.abspath(sys.executable))
@@ -109,8 +109,7 @@ USER_KEYS = KEYS_FILE                 # 兼容旧名字
 # 早期把两样东西混在一个文件里，第一次运行会自动拆开（原文件改名保留）
 LEGACY_KEYS = os.path.join(USER_DIR, 'keys.user.json')
 
-# 设备相关：这里是**可选的显式覆盖**，真正的自动发现在 memscan.adb.find_adb()
-# （会依次看 --adb / YYJH_ADB / keys.local.json / PATH / 常见安装位置 / 模拟器自带）
+# 保留旧配置字段以读取历史配置；桌面不使用 ADB 设备发现。
 ADB = os.environ.get('YYJH_ADB') or ''
 SERIAL = os.environ.get('YYJH_SERIAL') or ''
 DEVICE_TMP = '/sdcard/_yyjh.bin'

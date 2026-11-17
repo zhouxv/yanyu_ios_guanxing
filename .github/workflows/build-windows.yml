@@ -112,20 +112,3 @@ jobs:
             dist/iosGuanxing.exe
             dist/SHA256SUMS.txt
 
-  sync-gitee-code:
-    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'cunsesjh/yanyu_ios_guanxing'
-    runs-on: ubuntu-latest
-    concurrency:
-      group: gitee-code
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Sync main and release tag to Gitee
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          GITEE_REPO: ${{ secrets.GITEE_REPO || 'cunses/yanyu_ios_guanxing' }}
-        run: python .github/scripts/gitee_sync.py
-
