@@ -149,6 +149,14 @@ scripts.extend([r'''JSON.stringify((()=>{
     const el=id=>document.getElementById(id);
     if (el('wpStatus').classList.contains('w2-error')) return {error:el('wpStatus').textContent};
     if (el('wpRun').disabled) return {waiting:el('wpStatus').textContent};
+    if (el('wpBag').value !== '5000') return {error:'Personal bag did not load from save'};
+    el('wpBag').value='-1'; el('wpBag').dispatchEvent(new Event('input'));
+    if (!el('wpStatus').classList.contains('w2-error')) return {error:'Negative bag accepted'};
+    el('wpResetBag').click();
+    if (el('wpBag').value !== '5000') return {error:'Personal bag reset failed'};
+    el('wpBag').value='1234'; el('wpBag').dispatchEvent(new Event('input'));
+    if (state.saveData.Items.find(item=>item.ID===2601).Num !== 5000)
+        return {error:'Personal bag changed imported save'};
     el('wpBudget').value=0;
     el('wpBudget').dispatchEvent(new Event('input'));
     el('wpRun').click();
@@ -167,6 +175,8 @@ scripts.extend([r'''JSON.stringify((()=>{
     if (el('wpStatus').classList.contains('w2-error')) return {error:el('wpStatus').textContent};
     if (!el('wpStatus').textContent.includes('已证最低')) return {waiting:el('wpStatus').textContent};
     if (!el('wpResults').querySelector('details') || el('wpExport').disabled) return {error:'missing exportable result'};
+    if (el('wpBag').value !== '1234' || !el('wpResults').textContent.includes('余1234 丹'))
+        return {error:'Personal bag not retained in result'};
     if (el('w2Budget').value !== '1') return {error:'modified other tabs budget'};
     el('wpAutoExact').checked=true;
     el('wpBudget').value=1000;

@@ -8,7 +8,7 @@
     let raw = null, worker = null, request = 0, running = false, available = [], assignments = new Map();
     let source = null, context = '', lastResult = null, bag = 0, activeRole = '';
     let referenceText = '', dbName = null, paused = false, refVersion = 0;
-    let phase = 'idle', progressTitle = '', progressDetail = '';
+    let phase = 'idle', progressTitle = '', progressDetail = '', customBag = null, savedBag = 0;
     const panel = document.getElementById('personalWashModePanel');
     if (!panel) return;
     const tab = document.getElementById('btnPersonalWashMode');
@@ -48,8 +48,10 @@
                     <option value="3">策略 7 层</option><option value="0">直接穷举</option>
                 </select></label>
                 <label>开槽范围<select id="wpSlots"><option value="4">允许逐步开到四槽</option><option value="0">只用当前槽数</option></select></label><label>参考路线（选填）<input type="file" id="wpReference" accept=".txt,.md"></label><button type="button" id="wpForget" class="btn btn-reset" hidden>移除参考路线</button>
-                <div class="w2-stock">背包洗髓丹<strong id="wpBag">—</strong></div>
+                <label>可用洗髓丹<input id="wpBag" type="number" min="0" step="1" placeholder="选择人物后读取" disabled></label>
+                <button id="wpResetBag" type="button" class="btn btn-reset" disabled>恢复存档丹数</button>
             </div>
+            <p class="w2-muted">可用洗髓丹支持手动填写，用于计算路线余量；最大耗丹数量决定搜索上限。重新导入存档后恢复读取存档丹数。</p>
             <p id="wpSummary" class="w2-muted">请先在首页导入存档，再选择人物。</p>
         </section>
         <section class="w2-section">
@@ -172,8 +174,10 @@
             if (s.dlcMode || /international|oversea|国际|國際/i.test([s.saveChannel, s.savePlatform].join(' '))) throw new Error('此模块暂支持国服及先行服，国际服请使用原有功能。');
             raw = AutoWash2Model.snapshot(s.saveData, entry.role, {vip: $('Vip').value, channel: s.saveChannel});
             if (![150, 151, 152, 153, 154].includes(raw.zizhi)) throw new Error('该人物资质不受支持。');
-            bag = (Array.isArray(s.saveData.Items) ? s.saveData.Items : Object.values(s.saveData.Items || {})).reduce((n, t) => n + (Number(t.ID) === 2601 ? Number(t.Num) || 0 : 0), 0);
-            $('Bag').textContent = bag.toLocaleString() + ' 丹';
+            savedBag = (Array.isArray(s.saveData.Items) ? s.saveData.Items : Object.values(s.saveData.Items || {})).reduce((n, t) => n + (Number(t.ID) === 2601 ? Number(t.Num) || 0 : 0), 0);
+            bag = customBag ?? savedBag;
+            $('Bag').value = bag;
+            $('Bag').disabled = $('ResetBag').disabled = false;
             $('Summary').textContent = `${entry.tag} · ${entry.role.Name || '无名'} · ${ZZ_DATA[raw.zizhi]?.zz_name || ZZ_DATA[raw.zizhi]?.name || ['资质平平', '资质过人', '武林俊杰', '绝世奇才', '空前绝后'][raw.zizhi - 150]} · ${raw.zizhi - 150} 槽 · 从导入存档的原始状态起算`;
             renderLocks(); renderTargets(); inspect();
         } catch (error) { raw = null; $('Run').disabled = true; renderLocks(); renderTargets(); status(error.message, true); }
@@ -182,9 +186,11 @@
         const s = window.state || {}, signature = JSON.stringify([s.saveChannel, s.savePlatform, s.dlcMode]);
         if (source === s.saveData && context === signature) return;
         source = s.saveData; context = signature; invalidate(); raw = null; available = []; assignments.clear();
+        customBag = null; bag = savedBag = 0;
         $('Role').innerHTML = '<option value="">请选择人物</option>' + (s.saveRoles || []).map(e => `<option value="${esc(e.key)}">${esc(e.tag + ' · ' + (e.role.Name || e.role.ID))}</option>`).join('');
         $('Role').disabled = !s.saveRoles?.length; $('Run').disabled = true;
-        $('Bag').textContent = '—'; $('Summary').textContent = s.saveData ? '存档已导入，请明确选择一名人物。' : '请先在首页导入存档，再选择人物。';
+        $('Bag').value = ''; $('Bag').disabled = $('ResetBag').disabled = true;
+        $('Summary').textContent = s.saveData ? '存档已导入，请明确选择一名人物。' : '请先在首页导入存档，再选择人物。';
         renderLocks(); renderTargets(); status('等待选择人物。');
     }
     function renderResult(result) {
@@ -204,6 +210,8 @@
         refresh();
         if (!raw || running) return;
         try {
+            if ($('Bag').value === '' || !Number.isSafeInteger(Number($('Bag').value)) || Number($('Bag').value) < 0)
+                throw new Error('可用洗髓丹须为非负整数。');
             const budget = Number($('Budget').value);
             if (!Number.isInteger(budget) || budget < 0 || budget > 20000) throw new Error('耗丹上限须为 0–20000 的整数。');
             const selection = AutoWash2Model.targets(raw, assignments, TALENT_DATA);
@@ -304,6 +312,20 @@
     $('Role').addEventListener('change', () => { assignments.clear(); chooseRole(); });
     $('Vip').addEventListener('change', chooseRole);
     $('Budget').addEventListener('input', () => { invalidate(); status('耗丹上限已修改，请重新规划。'); });
+    $('Bag').addEventListener('input', () => {
+        invalidate();
+        const value = Number($('Bag').value);
+        if ($('Bag').value === '' || !Number.isSafeInteger(value) || value < 0) {
+            status('可用洗髓丹须为非负整数。', true);
+            return;
+        }
+        bag = customBag = value;
+        status('可用洗髓丹已修改，请重新规划。');
+    });
+    $('ResetBag').addEventListener('click', () => {
+        invalidate(); customBag = null; bag = savedBag; $('Bag').value = bag;
+        status('已恢复存档中的洗髓丹数量。');
+    });
     $('Depth').addEventListener('change', invalidate);
     $('Filter').addEventListener('input', renderTargets);
     $('Targets').addEventListener('click', event => {
