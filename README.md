@@ -8,6 +8,8 @@
 
 Windows 10/11 x64 下载 Release 中的 `iosGuanxing.exe`，直接运行。
 
+如果下载的是源码，按下方的 [Windows 源码安装与启动](#windows-源码安装与启动) 操作。
+
 1. 选择或拖入 ProxyPin 导出的 HAR，自动向游戏服务器下载当前云存档。
    若主动下载失败（常见：登录会话已过期、断网），而抓包里本身带着完整存档（国际服等旧式明文 download 响应），会自动改为离线导入这次抓包里的存档快照，并在提示中说明来源。
 2. 下载成功后自动进入内置观星主页。
@@ -40,10 +42,57 @@ Windows 10/11 x64 下载 Release 中的 `iosGuanxing.exe`，直接运行。
 
 ## 开发与构建
 
-Python 3.11，安装 `requirements-desktop.txt` 后执行 `python desktop_main.py`。正式目标为 Windows，其他平台开发预览不持久化登录会话。
+### Windows 源码安装与启动
 
-离线测试：`python -m unittest discover -s tests -v`；内置网页验证：`python dev/smoke_desktop.py`。
+先安装 Windows 版 64 位 Python 3.11 和 Python 启动器（`py`）。在项目根目录打开终端，执行对应的一组命令。
 
-Windows 打包：安装 PyInstaller 6.x，运行 `python -m PyInstaller --noconfirm iosGuanxing.spec`。推送 `v*` 标签自动构建预览 Release，发布 EXE 与 SHA256 校验文件。
+`requirements-desktop.txt` 包含运行依赖和 PyInstaller 打包工具。安装完成后即可运行源码或生成 EXE。
+
+**Git Bash / UCRT64**（提示符末尾是 `$`）
+
+```bash
+py -3.11 -m venv .venv &&
+./.venv/Scripts/python.exe -m pip install -r requirements-desktop.txt &&
+./.venv/Scripts/python.exe desktop_main.py
+```
+
+**PowerShell**（提示符以 `PS` 开头）。逐行执行，每一步成功后再执行下一步。
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-desktop.txt
+.\.venv\Scripts\python.exe desktop_main.py
+```
+
+最后一行会打开观星窗口。以后双击仓库里的 `启动观星.cmd` 即可。若已经有 `.venv`，但提示 `No module named 'PySide6'`、`No module named 'xxtea'` 或 `No module named 'PyInstaller'`，重新执行安装依赖的命令，等它成功结束后再启动或打包。
+
+若第一步之后提示找不到 `py` 或 Python 3.11，请在当前终端运行 `py -3.11 --version` 检查。安装 Windows 版 Python 3.11 和启动器后重新打开终端，确认显示 `Python 3.11.x` 再继续。
+
+正式目标为 Windows，其他平台开发预览不持久化登录会话。
+
+### 测试与打包
+
+在 PowerShell 中使用项目的虚拟环境运行离线测试和内置网页验证：
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe dev/smoke_desktop.py
+```
+
+需要生成单文件 EXE 时，在 PowerShell 中执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-desktop.txt
+.\打包观星.cmd
+```
+
+Git Bash / UCRT64 中执行：
+
+```bash
+./.venv/Scripts/python.exe -m pip install -r requirements-desktop.txt &&
+./打包观星.cmd
+```
+
+以后修改代码后双击 `打包观星.cmd` 即可重新打包，输出文件为 `dist\iosGuanxing.exe`。依赖文件更新后，先重新运行安装依赖的命令。推送 `v*` 标签自动构建预览 Release，发布 EXE 与 SHA256 校验文件。
 
 首版使用临时图标，EXE 未签名。自动测试使用合成存档和模拟下载，不连接游戏服务器；实际账号下载需要使用者在 Windows 上验收。

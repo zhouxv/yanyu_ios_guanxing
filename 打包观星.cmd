@@ -3,6 +3,15 @@ setlocal
 cd /d "%~dp0" || exit /b 1
 if not exist ".venv\Scripts\python.exe" (
     echo Project Python is missing: .venv\Scripts\python.exe
+    echo Run: py -3.11 -m venv .venv
+    echo Then run: .venv\Scripts\python.exe -m pip install -r requirements-desktop.txt
+    goto :failed
+)
+
+".venv\Scripts\python.exe" -c "import PyInstaller" >nul 2>&1
+if errorlevel 1 (
+    echo PyInstaller is missing from the project environment.
+    echo Run: .venv\Scripts\python.exe -m pip install -r requirements-desktop.txt
     goto :failed
 )
 
