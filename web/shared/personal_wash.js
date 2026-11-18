@@ -222,6 +222,9 @@
                     const p = data.progress;
                     if (p.layer != null) showProgress('策略搜索中 · 第 ' + p.layer + ' / ' + p.layers + ' 层',
                         '第 ' + p.pass + ' / ' + p.passes + ' 轮 · ' + p.method + ' · 本层已试洗 ' + p.washes.toLocaleString() + ' 次');
+                    else if (p.construction) showProgress('正在比较首次置换',p.message);
+                    else if (p.sameName) showProgress('正在比较同名置换',p.message);
+                    else if (p.tactical) showProgress('正在比较开槽与连续置换',p.message);
                     else showProgress(progressTitle,p.message);
                 }
                 if (data.type === 'candidate') renderResult(data.result);
@@ -241,7 +244,7 @@
                 if (data.type === 'result') {
                     renderResult(data.result); stop(); phase = 'done';
                     const best = data.result.routes[0];
-                    status('七层搜索已结束',false,best ? '本次找到的最低丹耗为 ' + best.totalPills.toLocaleString() + ' 丹，可导出路线。'
+                    status('搜索已结束',false,best ? '本次找到的最低丹耗为 ' + best.totalPills.toLocaleString() + ' 丹，可导出路线。'
                         : data.result.noResultReason);
                 }
             };

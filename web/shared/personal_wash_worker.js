@@ -5,7 +5,9 @@ importScripts('data.js','born_talent_data.js','battle_talent_data.js','life_heda
     'extra_attr_data.js','equip_data.js','kongfu_data.js','../role/role.js','wash_role_context.js',
     'wash_source_engine.js','auto_wash2_source_cache.js','auto_wash2_engine.js',
     'auto_wash2_optimizer.js','auto_wash2_model.js','personal_wash_routes.js',
-    'personal_wash_search.js','personal_wash_conflict_windows.js');
+    'personal_wash_search.js','personal_wash_conflict_windows.js',
+    'personal_wash_seed_planner.js','personal_wash_seed_construction.js','anchor_route_planner.js',
+    'personal_wash_anchor.js','personal_wash_tactical.js');
 let active;
 self.onmessage = async ({data}) => {
     const send = (type,payload) => self.postMessage({type,requestId:data.requestId,...payload});
@@ -77,9 +79,16 @@ self.onmessage = async ({data}) => {
                     info => progress({...info,pass:index + 1,passes:caps.length}));
                 for (const _ of runner) await checkpoint();
             }
+            const ceiling = Math.min(opts.maxTotalPills, (best?.totalPills ?? Infinity) - 1);
+            for (const _ of PersonalWashSeedConstruction.search(ctx, ceiling, accept, progress))
+                await checkpoint();
+            const anchorCap = Math.min(opts.maxTotalPills, (best?.totalPills ?? Infinity) - 1);
+            for (const _ of PersonalWashAnchor.search(ctx, anchorCap, accept, progress))
+                await checkpoint();
+            await PersonalWashTactical.search(ctx,best,accept,progress,checkpoint);
         }
         send('result',{result:{routes:best ? [best] : [],
-            noResultReason:reason || '七层策略在当前预算内尚未找到满足目标的路线。'}});
+            noResultReason:reason || '本次搜索在当前丹数上限内尚未找到满足目标的路线。'}});
     } catch (err) {
         send('error',{error:'搜索未完成：' + (err.message || err) + (best ? '。已保留经过回放的候选。' : '')});
     } finally {

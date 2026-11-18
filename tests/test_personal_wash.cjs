@@ -69,6 +69,79 @@ async function checkStrategyWorkflow() {
         if (cap === once.cost) assert.equal(last.result.routes[0].totalPills,cap);
     }
 }
+function checkConstructionReplay() {
+    const held = 271;
+    const initial = {...raw, talents:[{id:held,locked:true}], luck_seed:77, luck_seed_inited:true};
+    const engine = new AutoWash2Engine.Engine(TALENT_DATA, initial);
+    const hit = engine.wash(engine.initialState(initial), [0]);
+    const purple = hit.state.talents.find(id => id !== held && engine.quality(id) === 4);
+    assert.ok(purple);
+    const step = {type:'lock', id:purple, locks:[held], washes:1, cost:hit.cost, field:hit.state.talents};
+    const job = input(initial,[held],[[purple]],hit.cost,153);
+    const ctx = PersonalWashSearch.context(job);
+    function check(steps, cap) {
+        const r = PersonalWashSeedConstruction.replay(ctx,{steps,cost:hit.cost,washes:1},153,cap);
+        return r ? [r] : [];
+    }
+    const [valid] = check([step],hit.cost);
+    assert.equal(valid.totalPills,hit.cost);
+    assert.deepEqual(valid.finalTalents.map(t=>t.id),hit.state.talents);
+    assert.equal(check([step],hit.cost-1).length,0);
+    assert.equal(check([{...step,field:[]}],hit.cost).length,0);
+    assert.equal(check([{type:'upgrade',toZi:154,washes:0,cost:0,field:[held]},step],hit.cost).length,0);
+}
+function checkSeedPlanner() {
+    importScripts('auto_wash2_unified_route_constructor.js');
+    const initial = {...raw, tal_lucky:0};
+    const ids = [271,250];
+    const ctx = PersonalWashSearch.context(input(initial,ids,[],4800,154));
+    const plan = PersonalWashSeedPlanner.create(ctx);
+    const params = {zi0:153, lead:16, n:0, maxWash:1400, budget:4800};
+    const upstream = AutoWash2UnifiedRouteConstructor.constructOnce(initial,ids,params);
+    assert.ok(upstream.ok && upstream.exchanges > 0);
+    const personal = plan(ids,params);
+    assert.equal(personal.cost,upstream.cost);
+    assert.equal(personal.washes,upstream.washes);
+    const verified = PersonalWashSeedConstruction.replay(ctx,personal,153,personal.cost);
+    assert.deepEqual(verified.finalTalents.map(t=>t.id),upstream.field);
+    assert.equal(plan(ids,{...params,budget:personal.cost-1}),null);
+}
+async function checkAdditionalBranches() {
+    const initial = {...raw,talents:[{id:271}]};
+    const engine = new AutoWash2Engine.Engine(TALENT_DATA,initial);
+    const roll = engine.wash(engine.initialState(initial),[0]);
+    const other = roll.state.talents.find(id=>id!==271 && engine.quality(id)===4);
+    const ctx = PersonalWashSearch.context(input(initial,[271,other],[],roll.cost,153));
+    const real = global.AnchorRoutePlanner;
+    const source = {key:'test-1',id:271}, second = {key:'test-2',id:other};
+    const found = {verified:true,cost:roll.cost,washes:1,steps:[{type:'wash',count:1,keepIds:[271],
+        after:{cost:roll.cost,zi:153,state:roll.state}}]};
+    global.AnchorRoutePlanner = {scan:()=>[source,second],usableSources:()=>[source],
+        search:(_raw,_anchors,_source,_pad,opts)=>opts.shouldCancel ? {sequence:{pool:[271,other],fixedLuck:true}}
+            : {routes:[found]}};
+    let winner;
+    try {
+        for (const _ of PersonalWashAnchor.search(ctx,roll.cost,r=>{winner=r;},()=>{})) {}
+        assert.equal(winner.totalPills,roll.cost);
+        assert.equal(PersonalWashTactical.replay(ctx,winner).totalPills,roll.cost);
+        assert.equal(PersonalWashTactical.replay(ctx,{...winner,finalState:{...winner.finalState,seed:-1}}),null);
+        for (const _ of PersonalWashAnchor.search(ctx,roll.cost-1,()=>assert.fail('over budget'),()=>{})) {}
+    } finally {global.AnchorRoutePlanner=real;}
+    const original=global.AutoWash2Optimizer, jobs=[];
+    const grouped=PersonalWashSearch.context(input(raw,[271,250],[[262,264,276]],70,154));
+    try {
+        global.AutoWash2Optimizer = {...original,searchWashRoutes:async options=>{
+            let work=0;while (!options.shouldCancel()) work++;
+            jobs.push({ids:options.targetIds,work,cap:options.options.maxTotalPills});
+            return {routes:[]};
+        }};
+        const incumbent={totalPills:50,finalTalents:[271,250,276].map(id=>({id}))};
+        await PersonalWashTactical.search(grouped,incumbent,()=>assert.fail(),()=>{},async()=>{});
+        assert.deepEqual(jobs.map(j=>j.ids.at(-1)),[276,262,264]);
+        assert(jobs.every(j=>j.cap===49 && j.work>0));
+        assert(jobs[0].work>jobs[1].work && jobs[1].work===jobs[2].work);
+    } finally {global.AutoWash2Optimizer=original;}
+}
 async function main() {
     // 青龙白虎 raises 54 Con above the 60 required for 五蕴皆空.
     const thresholdRole = {ID:1, Type:1, Sex:1, Level:100, ZiZhi:154, BornCon:54, Talents:[]};
@@ -81,6 +154,9 @@ async function main() {
         assert.equal(reply.summary.allowed.includes(239), eligible);
     }
     await checkStrategyWorkflow();
+    checkConstructionReplay();
+    checkSeedPlanner();
+    await checkAdditionalBranches();
     let checks = 0;
     const engine = new AutoWash2Engine.Engine(TALENT_DATA,raw);
     const carrier = engine.purpleIds.find(id=>!engine.isShenmai(id) &&
