@@ -1,251 +1,263 @@
-/* Search conflict windows shared by all compatible target combinations. */
+/* Seven tactical layers. Every candidate is replayed with the desktop wash engine. */
 (function (root) {
     'use strict';
-    function* iterate(input, branches, deadline, collect, progress, fair = false, quick = false) {
-        const engine = new root.AutoWash2Engine.Engine(root.TALENT_DATA, input.initialState,
-            {dlcMode: !!input.dlcMode, eligibleTalentIds: input.eligibleTalentIds});
-        const startState = engine.initialState(input.initialState);
-        if (![153, 154].includes(startState.zizhi) || !branches.length) return;
-        const {actionWash, actionReplace, actionUpgrade, traceAppend, routeFromNode} =
-            root.PersonalWashRoutes;
-        const initialLocks = (input.initialState.talents || []).filter(t => t.locked).map(t => t.id);
-        const wanted = new Set(branches.flat());
-        const required = new Set(input.targetIds || []);
-        const size = state => engine.slotCountFor(state.zizhi);
-        const level = input.options.depthLevel;
-        const byDepth = Number.isInteger(level) && level >= 1 && level <= 3;
-        const layers = byDepth ? 2 * level + 1 : 5;
-        const layerBudget = byDepth ? 250000 * level : Infinity;
-        let phaseDeadline = deadline, washes = 0, washLimit = layerBudget, limited = false;
-        const expired = () => byDepth ? washes >= washLimit : Date.now() >= phaseDeadline;
-        let ceiling = input.options.maxTotalPills;
-        let frontier = new Map();
-        const windows = new Map();
-        function step(node, result) {
-            return {state: result.state, cost: node.cost + result.action.cost,
-                trace: traceAppend(node.trace, result.action)};
-        }
+    const LAYERS = 7;
+    const WORK_PER_LAYER = 750000;
+    const QUANTUM = 128;
+
+    function* iterate(ctx, cap, nearby, accept, progress) {
+        const {engine, startState, targetIds, compatibleGroups = [], options} = ctx;
+        const {actionWash, actionOpen, actionReplace, traceAppend, routeFromNode} = root.PersonalWashRoutes;
+        const {goal, exchangeLocks} = root.PersonalWashSearch;
+        const required = new Set(targetIds);
+        const wanted = new Set([...targetIds, ...compatibleGroups.flat()]);
+        const startingLocks = (ctx.initialState.talents || []).filter(t => t.locked).map(t => t.id);
+        const keyOf = root.AutoWash2Engine.stateKey;
+        const slots = state => engine.slotCountFor(state.zizhi);
+        let ceiling = cap, work = 0, washes = 0, limit = 0;
+        let frontier, windows;
+        const expired = () => work >= limit;
+        const step = (node, result) => ({state:result.state, cost:node.cost + result.action.cost,
+            trace:traceAppend(node.trace, result.action)});
         function wash(node, locks) {
             washes++;
+            work++;
             return step(node, actionWash(engine, node.state, locks, 'conflict-window'));
         }
-        // Balance the two nested searches (lock onset and exchange timing)
-        // against the number of remaining affordable washes.
-        function windowLength(node, lockCount) {
-            const slots = size(node.state);
-            const unitCost = engine.at(node.state.zizhi).eat + Math.max(0, 2 * lockCount - 1);
-            const affordable = Math.max(0, Math.floor((ceiling - node.cost) / unitCost));
-            return Math.ceil(Math.sqrt(affordable) * slots);
-        }
-        function nextLocks(state, held) {
-            // Prefer required targets when more than one compatible talent appears.
-            let best = held;
-            for (const ids of branches) {
-                if (!held.every(id => ids.includes(id) || initialLocks.includes(id))) continue;
-                const locks = state.talents.filter(id => ids.includes(id) || initialLocks.includes(id));
-                if (locks.length > best.length) best = locks;
+        function* slotVariants(node) {
+            yield node;
+            while (node.state.zizhi < options.maxZi) {
+                node = step(node, actionOpen(engine, node.state));
+                yield node;
             }
-            return best;
+        }
+        function windowLength(node, lockCount) {
+            const cost = engine.at(node.state.zizhi).eat + Math.max(0, 2 * lockCount - 1);
+            const affordable = Math.max(0, Math.floor((ceiling - node.cost) / cost));
+            return Math.ceil(Math.sqrt(affordable) * slots(node.state));
         }
         function finish(node) {
             if (node.cost > ceiling) return false;
-            const ids = branches.find(group => group.every(id => node.state.talents.includes(id)));
-            if (!ids) return false;
-            const route = routeFromNode({...input, startState, engine, targetIds: ids},
-                {...node, serial: 0});
-            route.strategyLabel = quick ? '邻近前置与连续置换' : '冲突脉回溯 · 延迟置换';
-            collect({routes: [route]});
+            const targets = goal(ctx, node.state);
+            if (!targets) return false;
+            const route = routeFromNode({...ctx, targetIds:targets}, {...node, serial:0});
+            route.strategyLabel = nearby ? '邻近冲突与连续置换' : '冲突回溯与延迟置换';
+            accept(route);
             ceiling = node.cost - 1;
             return true;
         }
-        function keep(node, held) {
-            if (node.cost > ceiling || finish(node)) return;
-            const group = node.state.luckSeed + '/' + held.join(',');
+        // Only branch on group members actually in these slots. Input groups may have
+        // many combinations, but at a particular state there are at most four talents.
+        function lockChoices(state, held) {
+            const present = state.talents;
+            const fixed = present.filter(id => held.includes(id) || required.has(id));
+            let choices = [fixed];
+            for (const group of compatibleGroups) {
+                const available = present.filter(id => group.includes(id));
+                if (!available.length) continue;
+                choices = choices.flatMap(ids => ids.some(id => group.includes(id)) ? [ids]
+                    : available.map(id => [...ids, id]));
+            }
+            return choices;
+        }
+        function keep(node, ids) {
+            if (node.cost > ceiling) return;
+            const held = node.state.talents.filter(id => ids.includes(id));
+            const group = [node.state.zizhi, node.state.luckSeed, held.join(',')].join('/');
+            const key = keyOf(node.state);
             const bucket = frontier.get(group) || [];
-            const key = root.AutoWash2Engine.stateKey(node.state);
-            const same = bucket.findIndex(other => other.key === key);
+            const same = bucket.findIndex(item => item.key === key);
             if (same >= 0) {
                 if (bucket[same].cost <= node.cost) return;
                 bucket.splice(same, 1);
             }
-            // A bounded beam per luck seed and target subset, in pill order.
             if (bucket.length === 3 && bucket[2].cost <= node.cost) return;
             bucket.push({...node, held, key});
-            bucket.sort((a, b) => a.cost - b.cost);
+            bucket.sort((a,b) => a.cost - b.cost);
             if (bucket.length > 3) bucket.pop();
             frontier.set(group, bucket);
         }
-        function* exchangeWindow(start, held, carrier, depth) {
-            const key = root.AutoWash2Engine.stateKey(start.state) + '/' + held.join(',')
-                + '/' + carrier + '/' + depth;
-            if ((windows.get(key) ?? Infinity) <= start.cost) return;
-            if (windows.size >= 30000) windows.clear();
-            windows.set(key, start.cost);
-            const locks = [...new Set([...held, carrier])];
-            let node = start;
-            const limit = quick && start.state.luckSeed != null
-                ? (depth === 0 ? 8 : 0) : windowLength(start, locks.length);
-            for (let pad = 0; pad <= limit && node.cost <= ceiling && !expired(); pad++) {
-                const {state} = node;
-                const pos = state.talents.indexOf(carrier);
-                if (!engine.replaceablePositions(state, held).includes(pos)) break;
-                const swapped = step(node, actionReplace(engine, state, pos, 'window-exchange', held));
-                const added = swapped.state.talents.at(-1);
-                const protectedIds = held.filter(id => wanted.has(id) || initialLocks.includes(id));
-                const retained = nextLocks(swapped.state, protectedIds);
-                if (wanted.has(added)) keep(swapped, retained);
-                if (quick && protectedIds.length && !required.has(added))
-                    keep(swapped, protectedIds);
-                // After seed fixation the same exchange can land on a different
-                // blocker. Try the legal relay immediately, including zero washes.
-                if (depth + 1 < size(state) && !initialLocks.includes(added)) {
-                    const block = swapped.state.talents.find(id => engine.quality(id) < 4
-                        && engine.talentType(id) === engine.talentType(added));
-                    const relayLocks = [...new Set(block ? [...protectedIds, block] : protectedIds)];
-                    if (protectedIds.length && (depth > 0 || wanted.has(added))) keep(swapped, protectedIds);
-                    if (engine.replaceablePositions(swapped.state, relayLocks).includes(swapped.state.talents.indexOf(added))) {
-                        yield* exchangeWindow(swapped, relayLocks, added, depth + 1);
+        function retainTargets(node, held) {
+            for (const locks of lockChoices(node.state, held)) {
+                const gained = locks.filter(id => !held.includes(id));
+                if (!gained.length) continue;
+                keep(node, locks);
+                // A cheaper first target can have a more expensive continuation.
+                if (gained.length > 1)
+                    for (const id of gained) keep(node, [...held, id]);
+            }
+        }
+        // After the first exchange, follow only legal zero-pill edges. A repeated
+        // talent name may have a new luck seed. Only the full state closes a cycle.
+        function* freeChain(first, held) {
+            const queue = [first], seen = new Set([keyOf(first.state)]);
+            for (let i = 0; i < queue.length && !expired() && first.cost <= ceiling; i++) {
+                const node = queue[i];
+                if (finish(node)) break;
+                const retained = held.filter(id => node.state.talents.includes(id));
+                retainTargets(node, retained);
+                if (retained.length) keep(node, retained);
+                for (const pos of engine.replaceablePositions(node.state, node.state.talents)) {
+                    if (expired()) break;
+                    const locks = exchangeLocks(engine, node.state, pos, retained);
+                    const next = step(node, actionReplace(engine, node.state, pos, 'free-chain', locks));
+                    work++;
+                    const key = keyOf(next.state);
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        queue.push(next);
                     }
+                    if (work % QUANTUM === 0) yield;
                 }
-                if (locks.length >= size(state)) break;
-                node = wash(node, locks);
-                if (fair && washes % 128 === 0) yield;
+            }
+        }
+        function* exchangeWindow(start, held, carrier) {
+            const key = [keyOf(start.state), held.join(','), carrier].join('/');
+            if ((windows.get(key) ?? Infinity) <= start.cost) return;
+            windows.set(key, start.cost);
+            const padLocks = [...new Set([...held, carrier])];
+            const protectedIds = held.filter(id => wanted.has(id) || startingLocks.includes(id));
+            const maxPad = windowLength(start, padLocks.length);
+            let node = start;
+            for (let n = 0; n <= maxPad && node.cost <= ceiling && !expired(); n++) {
+                const pos = node.state.talents.indexOf(carrier);
+                if (!engine.replaceablePositions(node.state, held).includes(pos)) break;
+                const next = step(node, actionReplace(engine, node.state, pos, 'window-exchange', held));
+                work++;
+                if (work % QUANTUM === 0) yield;
+                yield* freeChain(next, protectedIds);
+                if (n === maxPad || padLocks.length >= slots(node.state) || expired()) break;
+                node = wash(node, padLocks);
+                if (work % QUANTUM === 0) yield;
+            }
+        }
+        function* atPair(node, held, carrier) {
+            // Opening here preserves the RNG but changes the price and the number
+            // of unlocked draws per wash. Keep the original slot count as well.
+            for (const variant of slotVariants(node)) {
+                if (expired()) return;
+                yield* exchangeWindow(variant, held, carrier);
+            }
+        }
+        function* activePairs(node, held) {
+            for (const pos of engine.replaceablePositions(node.state, node.state.talents)) {
+                const locks = exchangeLocks(engine, node.state, pos, held);
+                yield* atPair(node, locks, node.state.talents[pos]);
             }
         }
         function* scan(node, held, explore) {
-            const recent = [];
-            const lookback = windowLength(node, held.length);
-            // Save the most recent conflict talents before a natural purple,
-            // then replay from those positions under the proposed locks.
-            while (held.length < size(node.state) && node.cost <= ceiling && !expired()) {
+            if (node.cost > ceiling || finish(node)) return;
+            if (explore) yield* activePairs(node, held);
+            const recent = [], lookback = windowLength(node, held.length);
+            while (held.length < slots(node.state) && node.cost <= ceiling && !expired()) {
                 const next = wash(node, held);
-                if (fair && washes % 128 === 0) yield;
-                if (next.cost > ceiling) break;
+                if (work % QUANTUM === 0) yield;
+                if (next.cost > ceiling || finish(next)) break;
                 const fresh = next.state.talents.filter(id => !held.includes(id));
-                for (const purple of explore ? fresh : []) {
-                    if (engine.quality(purple) !== 4) continue;
-                    const type = engine.talentType(purple);
-                    const anchors = quick ? recent.slice().reverse() : recent;
-                    let matches = 0;
-                    for (const before of anchors) {
-                        const anchor = before.state.talents.find(id => !held.includes(id)
-                            && engine.quality(id) < 4 && engine.talentType(id) === type);
-                        if (!anchor) continue;
-                        // This first pass samples nearby onset points. The wider
-                        // pass and cost-ordered search start afresh afterwards.
-                        if (quick && ++matches > 3) break;
-                        const locks = [...held, anchor];
-                        let pivot = before;
-                        while (locks.length < size(pivot.state) && !expired()
-                            && pivot.state.bornRC <= next.state.bornRC) {
-                            // Pity draws need not advance the ordinary sequence.
-                            const priorCost = pivot.cost;
-                            pivot = wash(pivot, locks);
-                            if (fair && washes % 128 === 0) yield;
-                            if (pivot.cost <= priorCost || pivot.cost > ceiling) break;
-                            const pos = engine.replaceablePositions(pivot.state, locks)
-                                .find(i => pivot.state.talents[i] === purple);
-                            if (pos !== undefined) { yield* exchangeWindow(pivot, locks, purple, 0); break; }
+                if (explore && fresh.some(id => engine.quality(id) === 4)) {
+                    yield* activePairs(next, held);
+                    for (const purple of fresh.filter(id => engine.quality(id) === 4)) {
+                        const type = engine.talentType(purple);
+                        const anchors = nearby ? recent.slice().reverse() : recent;
+                        let matches = 0;
+                        for (const before of anchors) {
+                            const anchor = before.state.talents.find(id => !held.includes(id)
+                                && engine.quality(id) < 4 && engine.talentType(id) === type);
+                            if (anchor == null) continue;
+                            if (nearby && ++matches > 3) break;
+                            const locks = [...held, anchor];
+                            for (let pivot of slotVariants(before)) {
+                                while (locks.length < slots(pivot.state) && !expired()
+                                        && pivot.state.bornRC <= next.state.bornRC && pivot.cost < ceiling) {
+                                    pivot = wash(pivot, locks);
+                                    if (work % QUANTUM === 0) yield;
+                                    if (pivot.cost > ceiling) break;
+                                    const pos = pivot.state.talents.indexOf(purple);
+                                    if (pos >= 0 && engine.replaceablePositions(pivot.state, locks).includes(pos)) {
+                                        yield* atPair(pivot, locks, purple);
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-                if (finish(next)) break;
-                const gained = nextLocks(next.state, held);
-                if (gained.length > held.length) {
-                    if (explore) {
-                        keep(next, gained);
-                        const mandatory = gained.filter(id=>required.has(id));
-                        if (quick && mandatory.length > held.length && mandatory.length < gained.length)
-                            keep(next, mandatory);
-                    }
-                    else held = gained;
+                if (explore) retainTargets(next, held);
+                else held = lockChoices(next.state, held)[0];
+                if (explore) {
+                    recent.push(node);
+                    if (recent.length > lookback) recent.shift();
                 }
-                recent.push(node);
-                if (recent.length > lookback) recent.shift();
                 node = next;
             }
         }
-        const start = {state: startState, cost: 0, trace: null, held: initialLocks};
-        if (finish(start)) return;
-        let layer = [start];
-        const luckScores = new Map();
+        const scores = new Map();
         function seedScore(node) {
-            const key = [node.state.luckSeed, node.state.talents.join(','), node.held.join(',')].join('/');
-            if (luckScores.has(key)) return luckScores.get(key);
+            const key = [node.state.zizhi,node.state.luckSeed,node.state.talents.join(','),node.held.join(',')].join('/');
+            if (scores.has(key)) return scores.get(key);
             let seed = node.state.luckSeed;
             const seen = new Set(node.held);
             if (seed != null) {
                 for (let i = 0, accepted = 0; i < 32 && accepted < 4; i++) {
                     const [id, next] = engine.draw(seed, true);
                     seed = next;
-                    if (!engine.isAllowedAt(id, 154, node.state) || seen.has(id)) continue;
+                    if (seen.has(id) || !engine.isAllowedAt(id, node.state.zizhi, node.state)) continue;
                     seen.add(id); accepted++;
                 }
             }
-            const coverage = Math.max(...branches.map(group => group.filter(id => seen.has(id)).length));
-            const score = coverage + [...required].filter(id => seen.has(id)).length;
-            luckScores.set(key, score);
+            const score = targetIds.filter(id => seen.has(id)).length * 2
+                + compatibleGroups.filter(group => group.some(id => seen.has(id))).length;
+            scores.set(key, score);
             return score;
         }
-        for (let depth = 0; layer.length && depth < layers && (byDepth || Date.now() < deadline); depth++) {
-            washes = 0;
-            washLimit = Math.floor(layerBudget * 0.8);
-            const now = Date.now();
-            phaseDeadline = now + (deadline - now) * (depth === 0 ? 0.25 : depth < 3 ? 0.55 : 1);
-            const method = quick ? '邻近前置和连续置换' : '冲突脉回溯';
-            const report = () => progress({method,layer:depth + 1,layers,washes,
-                message: method + ' · 第 ' + (depth + 1) + '/' + layers + ' 层'});
-            report();
+        const start = {state:startState, cost:0, trace:null, held:startingLocks};
+        let layer = [start];
+        if (startingLocks.length) layer.push({...start, held:[]});
+        for (const locks of lockChoices(startState, startingLocks)) {
+            if (locks.length > startingLocks.length) layer.push({...start, held:locks});
+        }
+        for (const id of startState.talents.filter(id => wanted.has(id)))
+            layer.push({...start, held:[id]});
+        for (let depth = 1; depth <= LAYERS && layer.length && ceiling >= 0; depth++) {
+            washes = work = 0;
+            limit = Math.floor(WORK_PER_LAYER * 0.8);
             frontier = new Map();
-            windows.clear();
+            windows = new Map();
+            const report = () => progress({layer:depth, layers:LAYERS, washes,
+                method:nearby ? '邻近前置与开槽' : '冲突回溯与延迟置换'});
+            report();
+            let nextReport = 16384;
             function* runLayer(items, explore) {
-                function task(item) {
-                    const open = item.state.zizhi === 153 && (depth > 0 || !explore)
-                        && (input.options.maxZi ?? 154) >= 154
-                        ? step(item, actionUpgrade(engine, item.state)) : item;
-                    return scan(open, item.held, explore);
-                }
-                if (!fair) {
-                    for (const item of items) {
-                        if (expired()) break;
-                        yield* task(item);
+                const starts = new Map();
+                for (const item of items) {
+                    if (item.cost > ceiling) continue;
+                    for (const variant of slotVariants(item)) {
+                        const key = keyOf(variant.state) + '/' + item.held.join(',');
+                        if ((starts.get(key)?.cost ?? Infinity) > variant.cost)
+                            starts.set(key, {...variant, held:item.held});
                     }
-                    return;
                 }
-                // Each iterator retains its prefix, inner pad and relay cursors.
-                // Give every start a quantum before revisiting an expensive start.
-                let active = items.map(task);
-                while (active.length && !expired()) {
-                    const next = [];
-                    for (const job of active) {
+                let jobs = Array.from(starts.values(), item => scan(item, item.held, explore));
+                while (jobs.length && !expired() && ceiling >= 0) {
+                    const pending = [];
+                    for (const job of jobs) {
                         if (expired()) break;
-                        if (!job.next().done) {
-                            next.push(job);
-                            if (washes && washes % 16384 === 0) report();
+                        if (!job.next().done) pending.push(job);
+                        if (work >= nextReport) {
+                            report();
+                            nextReport = work + 16384;
                         }
                         yield;
                     }
-                    active = next;
+                    jobs = pending;
                 }
             }
             yield* runLayer(layer, true);
-            // Different starting locks often converge on the same luck seed.
-            // Reserve expansion slots for distinct seeds and target subsets.
-            layer = [...frontier.values()].flat().sort((a, b) => b.held.length - a.held.length
+            layer = [...frontier.values()].flat().sort((a,b) => b.held.length - a.held.length
                 || seedScore(b) - seedScore(a) || a.cost - b.cost);
-            if (byDepth && expired()) limited = true;
-            washLimit = layerBudget;
-            phaseDeadline = Math.min(deadline, Math.max(phaseDeadline, Date.now() + (deadline-Date.now())*0.12));
+            limit = WORK_PER_LAYER;
             yield* runLayer(layer, false);
-            if (byDepth && expired()) limited = true;
         }
-        return limited;
     }
-    function search(...args) {
-        const jobs = iterate(...args);
-        let result;
-        do { result = jobs.next(); } while (!result.done);
-        return result.value;
-    }
-    root.PersonalWashConflictWindows = {search, iterate};
+    root.PersonalWashConflictWindows = Object.freeze({iterate});
 })(self);

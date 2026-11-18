@@ -67,13 +67,15 @@
         };
     }
 
-    function actionUpgrade(engine, state) {
-        const upgraded = engine.upgradeToFour(state);
+    function actionOpen(engine, state) {
+        const fourth = state.zizhi === 153;
+        const upgraded = fourth ? engine.upgradeToFour(state)
+            : {...root.AutoWash2Engine.cloneState(state), zizhi: state.zizhi + 1};
         return {
             state: upgraded,
             action: {
-                kind: 'upgrade',
-                mode: 'open-fourth-slot',
+                kind: fourth ? 'upgrade' : 'openSlot',
+                mode: 'open-next',
                 keepIds: [],
                 cost: 0,
                 draws: 0,
@@ -209,5 +211,5 @@
         };
     }
 
-    root.PersonalWashRoutes = Object.freeze({actionWash, actionReplace, actionUpgrade, traceAppend, routeFromNode});
+    root.PersonalWashRoutes = Object.freeze({actionWash, actionReplace, actionOpen, traceAppend, routeFromNode});
 })(self);

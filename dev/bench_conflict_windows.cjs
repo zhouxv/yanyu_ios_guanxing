@@ -1,7 +1,7 @@
 /* Local benchmark. Only the selected role is passed to the offline search.
  * node dev/bench_conflict_windows.cjs MODE SAVE ROLE BUDGET SECONDS TARGET...
- * Modes: windows, personal, fair, quick, worker, original. Slash-separated names form a compatible group.
- * Personal/fair/quick finish the strategy phase by depth; SECONDS is unused.
+ * Modes: personal, fair, quick, worker, original. Slash-separated names form a compatible group.
+ * Personal/fair/quick use the fixed seven-layer strategy; SECONDS applies to upstream modes.
  * Add --out=FILE to export the independently generated candidate.
  * "original" loads upstream v3.0.5 scripts for a like-for-like comparison.
  */
@@ -28,9 +28,9 @@ if (!isMainThread) {
     parentPort.on('message',data=>self.onmessage({data}));
     return;
 }
-if (!['windows', 'personal', 'fair', 'quick', 'worker', 'original'].includes(mode) || !targets.length)
+if (!['personal', 'fair', 'quick', 'worker', 'original'].includes(mode) || !targets.length)
     throw Error('Expected MODE SAVE ROLE BUDGET SECONDS TARGET...');
-importScripts(['windows','personal','fair','quick'].includes(mode) ? 'personal_wash_worker.js' : 'auto_wash2_worker.js');
+importScripts(['personal','fair','quick'].includes(mode) ? 'personal_wash_worker.js' : 'auto_wash2_worker.js');
 const save = JSON.parse(fs.readFileSync(saveFile));
 const role = [save.MainRole, ...Object.values(save.Roles)].find(r => r?.Name === name);
 const id = name => {
@@ -60,7 +60,7 @@ function collect(result) {
 }
 async function main() {
     if (mode === 'personal') {
-        Object.assign(input.options,{depthLevel:2,maxZi:154,strategyFirst:true});
+        input.options.maxZi = 154;
         const worker = new Worker(__filename);
         try {
             await new Promise((resolve,reject)=>{
@@ -68,20 +68,17 @@ async function main() {
                 worker.on('message',message=>{
                     if (message.type === 'error') reject(Error(message.error));
                     if (message.result) collect(message.result);
-                    if (message.phase === 'awaitingExact' || message.type === 'result') resolve();
+                    if (message.type === 'result') resolve();
                 });
                 worker.postMessage({type:'search',input,requestId:1});
             });
         } finally { await worker.terminate(); }
     } else if (mode === 'fair' || mode === 'quick') {
-        input.options.depthLevel = 2;
         input.options.maxZi = 154;
-        const scans = PersonalWashConflictWindows.iterate(input, AutoWash2Model.combinations(input),
-            Infinity, collect, () => {}, true, mode === 'quick');
-        for (const _ of scans) { /* drain all five layers */ }
-    } else if (mode === 'windows') {
-        PersonalWashConflictWindows.search(input, AutoWash2Model.combinations(input),
-            started + Number(seconds) * 1000, collect, () => {});
+        const ctx = PersonalWashSearch.context(input);
+        const scans = PersonalWashConflictWindows.iterate(ctx,Number(cap),mode === 'quick',
+            route => collect({routes:[route]}), () => {});
+        for (const _ of scans) { /* finish all available layers */ }
     } else {
         global.postMessage = event => {
             if (event.type === 'error') throw Error(event.error);

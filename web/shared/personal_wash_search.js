@@ -1,10 +1,10 @@
 (function (root) {
     'use strict';
-    const keyOf = state => root.AutoWash2Engine.stateKey(state);
     const actions = () => root.PersonalWashRoutes;
     function context(input) {
         const raw = input.initialState;
-        const engine = new root.AutoWash2Engine.Engine(root.TALENT_DATA, raw);
+        const engine = new root.AutoWash2Engine.Engine(root.TALENT_DATA, raw,
+            {dlcMode:!!input.dlcMode, eligibleTalentIds:input.eligibleTalentIds});
         return {...input, engine, startState:engine.initialState(raw)};
     }
     function goal(ctx, state) {
@@ -33,9 +33,7 @@
         const {engine} = ctx;
         if (move.type === 'open') {
             if (state.zizhi >= ctx.options.maxZi) throw Error('路线需要开槽，超出所选范围');
-            const next = {...root.AutoWash2Engine.cloneState(state), zizhi:state.zizhi + 1};
-            return {state:next, action:{kind:'openSlot', mode:'open-next', keepIds:[],
-                cost:0, draws:0, generatedBars:0, after:next}};
+            return actions().actionOpen(engine,state);
         }
         if (move.type === 'exchange') {
             return actions().actionReplace(engine, state, move.pos, 'window-exchange', move.keep);
@@ -43,23 +41,16 @@
         if (move.keep.length >= engine.slotCountFor(state.zizhi)) throw Error('没有可洗的空槽');
         return actions().actionWash(engine, state, move.keep, 'personal-wash');
     }
-    function* moves(ctx, state, remaining = Infinity) {
-        if (state.zizhi < ctx.options.maxZi) yield {type:'open'};
-        const talents = state.talents, slots = ctx.engine.slotCountFor(state.zizhi);
-        const basePrice = ctx.engine.at(state.zizhi).eat;
-        // For a fixed position, locks decide legality only. Once legal, replace()
-        // draws from exactly the same state, independent of the enabling subset.
-        const exchanged = new Set();
-        for (let mask = 0; mask < 2 ** talents.length; mask++) {
-            const keep = talents.filter((_, i) => mask & (1 << i));
-            if (keep.length < slots && basePrice + Math.max(0,2*keep.length-1) <= remaining)
-                yield {type:'wash', keep};
-            for (const pos of ctx.engine.replaceablePositions(state, keep)) {
-                if (exchanged.has(pos)) continue;
-                exchanged.add(pos);
-                yield {type:'exchange', pos, keep};
-            }
-        }
+    // For a fixed position, locks only enable the exchange. The result depends
+    // on the state and position. Infer an enabling lock for abbreviated exports.
+    function exchangeLocks(engine, state, pos, held = []) {
+        const carrier = state.talents[pos];
+        const keep = state.talents.filter(id => id !== carrier && held.includes(id));
+        if (engine.replaceablePositions(state,keep).includes(pos)) return keep;
+        const anchor = state.talents.slice(0,pos).find(id => engine.quality(id) < 4
+            && engine.talentType(id) === engine.talentType(carrier));
+        if (anchor != null) keep.push(anchor);
+        return keep;
     }
     function route(ctx, moves, kind) {
         let state = ctx.startState, cost = 0, trace = null;
@@ -75,10 +66,10 @@
     }
     // Accept action text only. The selected snapshot supplies every seed,
     // price, lock position and target. Never trust totals stated in a file.
-    function reference(ctx, text) {
+    function replayText(ctx, text) {
         const md = text.includes('## 照着操作');
         const rows = md ? text.split('## 照着操作')[1].split(/^最终槽位[：:]/m)[0]
-            : text.split(/^路线\s+\d+[：:]/m)[1] || text;
+            : text;
         let state = ctx.startState, keep = [], cost = 0;
         const path = [];
         const names = value => [...value.matchAll(/「([^」]+)」/g)].flatMap(m => m[1].split('、'));
@@ -100,11 +91,13 @@
                 continue;
             }
             if (line.includes('当前锁定') || line.includes('当前未锁定')) { keep = ids(names(line)); continue; }
-            const wash = line.match(/(?:连续洗脉|洗)\s*(\d+)\s*次/);
+            const wash = line.match(/(?:连续洗脉|本段洗髓|洗)\s*(\d+)\s*次/);
             if (wash) {
                 if (!md) {
                     const plain = line.match(/(?:^|\s)锁定\s*([^「，：]+)，洗\s*\d+\s*次/);
-                    keep = ids(plain ? plain[1].split('、') : names(line.split('连续洗脉')[0].split(/[：:]/).at(-1)));
+                    const preserved = line.match(/洗髓时保留[：:]\s*([^；。（]+)/);
+                    if (line.includes('本段洗髓')) keep = preserved ? ids(preserved[1].split('、')) : [];
+                    else keep = ids(plain ? plain[1].split('、') : names(line.split('连续洗脉')[0].split(/[：:]/).at(-1)));
                 }
                 const count = Number(wash[1]);
                 if (count > 20000) throw Error('单步洗数过大');
@@ -115,11 +108,12 @@
             const ex = line.match(/将「([^」]+)」置换为「([^」]+)」|置换「([^」]+)」，应得到「([^」]+)」|置换\s+([^→：]+?)\s*→\s*([^：:（]+?)\s*[：:（]/);
             if (ex) {
                 const [from] = ids([ex[1] || ex[3] || ex[5]]), pos = state.talents.indexOf(from);
-                const plainLocks = line.match(/[：:]锁定([^；：:]+?)(?:后置换|；置换)/);
-                const locks = plainLocks && ex[5] ? ids(plainLocks[1].split('、')) : md || ex[5]
-                    ? state.talents.slice(0,pos).filter(id => ctx.engine.quality(id)<4 &&
-                        ctx.engine.talentType(id)===ctx.engine.talentType(from))
-                    : ids(names(line.split('置换「')[0]));
+                const plainLocks = line.match(/[：:；]锁定([^；：:]+?)(?:后置换|；置换)/);
+                const explicit = names(line.split('置换「')[0]);
+                let locks;
+                if (plainLocks && ex[5]) locks = ids(plainLocks[1].split('、'));
+                else if (ex[3] && explicit.length) locks = ids(explicit);
+                else locks = exchangeLocks(ctx.engine,state,pos,md ? keep : []);
                 advance({type:'exchange',pos,keep:locks});
                 if (ctx.engine.name(state.talents.at(-1)) !== (ex[2] || ex[4] || ex[6]).trim()) throw Error('置换结果不同，存档可能已推进');
             }
@@ -135,48 +129,18 @@
         return route(ctx,path,'personal-reference');
     }
 
-    async function exact(ctx, graph, initialBest, candidate, progress, checkpoint) {
-        if (!fitsSlots(ctx)) return {best:null,expanded:0,proof:'infeasible'};
-        const budget = ctx.options.maxTotalPills;
-        let best = initialBest, expanded = 0, lower = 0;
-        const first = {key:keyOf(ctx.startState), state:ctx.startState, cost:0, pending:0};
-        await graph.commit([],new Map([[first.key,first]]));
-        async function accept(row) {
-            const path = [];
-            for (let n=row; n.parent != null; n=await graph.read(n.parent)) path.push(n.move);
-            const checked = route(ctx,path.reverse(),'personal-exact');
-            if (checked.totalPills !== row.cost || !goal(ctx,row.state)) throw Error('路线成本回放不一致');
-            best = checked;
-            candidate(best);
+    function reference(ctx, text) {
+        const blocks = text.includes('## 照着操作') ? [text]
+            : text.trim().split(/(?=^路线\s+\d+[：:])/m).filter(part => part.trim());
+        let best = null, firstError;
+        for (const block of blocks) {
+            try {
+                const candidate = replayText(ctx, block);
+                if (!best || candidate.totalPills < best.totalPills) best = candidate;
+            } catch (error) { firstError ??= error; }
         }
-        while (true) {
-            await checkpoint();
-            const batch = await graph.take(64);
-            if (!batch.length || (best && batch[0].cost >= best.totalPills)) break;
-            lower = batch[0].cost;
-            const next = new Map();
-            for (const row of batch) {
-                if (goal(ctx,row.state) && (!best || row.cost < best.totalPills)) await accept(row);
-                if (best && lower >= best.totalPills) break;
-                expanded++;
-                const remaining = Math.min(budget,(best?.totalPills ?? Infinity)-1) - row.cost;
-                for (const move of moves(ctx,row.state,remaining)) {
-                    const successor = apply(ctx,row.state,move);
-                    const cost = row.cost + successor.action.cost;
-                    if (cost > budget || (best && cost >= best.totalPills)) continue;
-                    const state = successor.state, key = keyOf(state);
-                    if ((next.get(key)?.cost ?? Infinity) <= cost) continue;
-                    const child = {key,state,cost,pending:cost,parent:row.key,move};
-                    if (goal(ctx,state)) await accept(child);
-                    else next.set(key,child);
-                }
-            }
-            if (best && lower >= best.totalPills) break;
-            await graph.commit(batch,next);
-            progress({expanded,lower,best:best?.totalPills});
-        }
-        return {best:best ? {...best,verifiedOptimal:true} : null, expanded,
-            proof:best ? 'optimal' : 'infeasible'};
+        if (!best) throw firstError || Error('参考路线为空');
+        return best;
     }
-    root.PersonalWashSearch = {context,goal,fitsSlots,apply,moves,route,reference,exact};
+    root.PersonalWashSearch = Object.freeze({context,goal,fitsSlots,apply,exchangeLocks,route,reference});
 })(self);

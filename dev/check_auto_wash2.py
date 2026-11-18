@@ -66,7 +66,7 @@ def received(value):
         elif stage < len(scripts) - 1:
             stage += 1
         else:
-            print('PASS: both workers, personal proof, pause/resume, tab isolation and disk frontier', flush=True)
+            print('PASS: both workers, personal seven-layer search, pause/resume, bag, export and tab isolation', flush=True)
             window.close()
             app.exit(0)
     except Exception as error:
@@ -86,7 +86,7 @@ scripts = [r'''JSON.stringify((()=>{
     document.getElementById('btnAutoWash2Mode').click();
     if (document.getElementById('autoWash2ModePanel').hidden) return {waiting:'tab initialization'};
     if (document.getElementById('w2Depth') || document.getElementById('w2Reference') ||
-        !document.getElementById('wpDepth') || !document.getElementById('wpReference'))
+        document.getElementById('wpDepth') || !document.getElementById('wpReference'))
         return {error:'Personal settings must only exist on the personal tab'};
     window.AutoWash2.refresh();
     const r = document.getElementById('w2Role');
@@ -141,7 +141,7 @@ scripts.extend([r'''JSON.stringify((()=>{
     el('btnPersonalWashMode').click();
     if (el('personalWashModePanel').hidden || !el('autoWash2ModePanel').hidden) return {error:'personal tab visibility'};
     if (el('wpRole').value || el('wpBudget').value === '1') return {error:'settings shared between tabs'};
-    if (el('wpDepth').value!=='2' || el('wpAutoExact').checked || el('wpDepth').querySelector('[value^=depth]')) return {error:'Unexpected personal defaults'};
+    if (el('wpDepth') || el('wpAutoExact') || el('wpExact') || !el('wpRun').textContent.includes('七层')) return {error:'Unexpected search controls'};
     el('wpRole').value=state.saveRoles[0].key;
     el('wpRole').dispatchEvent(new Event('change'));
     return {ready:true};
@@ -164,31 +164,23 @@ scripts.extend([r'''JSON.stringify((()=>{
 })())''', r'''JSON.stringify((()=>{
     const el=id=>document.getElementById(id);
     if (el('wpStatus').classList.contains('w2-error')) return {error:el('wpStatus').textContent};
-    if (el('wpExact').hidden) return {waiting:el('wpStatus').textContent};
-    if (!el('wpStatus').textContent.includes('等待手动穷举') || el('wpBest').textContent!=='0 丹')
-        return {error:'Missing waiting status or zero-cost candidate'};
+    if (el('wpStatusBox').dataset.state !== 'done') return {waiting:el('wpStatus').textContent};
+    if (el('wpBest').textContent !== '0 丹' || !el('wpStatus').textContent.includes('七层'))
+        return {error:'Missing zero-cost result'};
     el('btnAutoWash2Mode').click(); el('btnPersonalWashMode').click();
-    el('wpExact').click();
-    return {ready:true};
-})())''', r'''JSON.stringify((()=>{
-    const el=id=>document.getElementById(id);
-    if (el('wpStatus').classList.contains('w2-error')) return {error:el('wpStatus').textContent};
-    if (!el('wpStatus').textContent.includes('已证最低')) return {waiting:el('wpStatus').textContent};
     if (!el('wpResults').querySelector('details') || el('wpExport').disabled) return {error:'missing exportable result'};
     if (el('wpBag').value !== '1234' || !el('wpResults').textContent.includes('余1234 丹'))
         return {error:'Personal bag not retained in result'};
     if (el('w2Budget').value !== '1') return {error:'modified other tabs budget'};
-    el('wpAutoExact').checked=true;
-    el('wpBudget').value=1000;
+    el('wpBudget').value=9000;
     el('wpBudget').dispatchEvent(new Event('input'));
-    el('wpTargets').querySelector('[data-id="272"]').click();
+    el('wpPreset').click();
     el('wpRun').click();
     return {ready:true};
 })())''', r'''JSON.stringify((()=>{
     const el=id=>document.getElementById(id);
     if (el('wpStatus').classList.contains('w2-error')) return {error:el('wpStatus').textContent};
-    if (el('wpStatusBox').dataset.state!=='exact') return {waiting:el('wpStatus').textContent};
-    if (!el('wpExact').hidden) return {error:'Automatic run waited for manual confirmation'};
+    if (el('wpStatusBox').dataset.state !== 'strategy') return {waiting:el('wpStatus').textContent};
     el('wpPause').click();
     return {ready:true};
 })())''', r'''JSON.stringify((()=>{
@@ -204,34 +196,8 @@ scripts.extend([r'''JSON.stringify((()=>{
     el('wpStop').click();
     if(!el('wpPause').hidden || el('wpRun').disabled) return {error:'cancel failed'};
     if(JSON.stringify(state)!==w2Baseline) return {error:'modified imported simulation state'};
-    window.diskTest='running';
-    (async()=>{
-        for(const file of ['auto_wash2_optimizer.js','personal_wash_graph.js']) {
-            const script=document.createElement('script'); script.src='../shared/'+file;
-            await new Promise((ok,fail)=>{script.onload=ok;script.onerror=fail;document.head.appendChild(script);});
-        }
-        const db='wash-test-'+crypto.randomUUID();
-        const graph=new PersonalWashGraph(db,1);
-        const row=(key,cost)=>({key,cost,pending:cost});
-        const successors=(...rows)=>new Map(rows.map(r=>[r.key,r]));
-        try {
-            await graph.commit([],successors(row('a',0),row('b',5)));
-            if(!graph.db) throw Error('spill missing');
-            const batch=await graph.take(64);
-            if(batch.length!==1 || batch[0].key!=='a') throw Error('incorrect first disk layer');
-            await graph.commit(batch,successors(row('a',0),row('b',2),row('c',0)));
-            const zero=await graph.take(64);
-            if(zero.length!==1 || zero[0].key!=='c') throw Error('incomplete zero-cost closure');
-            await graph.commit(zero,successors(row('b',4)));
-            const next=await graph.take(64);
-            if(next.length!==1 || next[0].cost!==2) throw Error('incorrect distance on disk');
-            await graph.commit(next,new Map());
-            if((await graph.take(1)).length || (await graph.read('b')).cost!==2) throw Error('disk predecessor');
-        } finally {graph.close();indexedDB.deleteDatabase(db);}
-        window.diskTest='ok';
-    })().catch(e=>window.diskTest='error '+e);
     return {ready:true};
-})())''', '''JSON.stringify(diskTest==='ok'?{ready:true}:diskTest==='running'?{waiting:diskTest}:{error:diskTest})'''])
+})())'''])
 
 pending = False
 def tick():

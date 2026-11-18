@@ -7,7 +7,7 @@
     const clone = value => JSON.parse(JSON.stringify(value));
     let raw = null, worker = null, request = 0, running = false, available = [], assignments = new Map();
     let source = null, context = '', lastResult = null, bag = 0, activeRole = '';
-    let referenceText = '', dbName = null, paused = false, refVersion = 0;
+    let referenceText = '', paused = false, refVersion = 0;
     let phase = 'idle', progressTitle = '', progressDetail = '', customBag = null, savedBag = 0;
     const panel = document.getElementById('personalWashModePanel');
     if (!panel) return;
@@ -26,7 +26,7 @@
             }
             document.getElementById('aiPredictionTitle').textContent = tab.textContent;
             document.querySelector('#aiPredictionPanel > .ai-prediction-intro').textContent =
-                '先按所选层数寻找路线。策略结束后可继续穷举，检查同一存档有没有更省丹的走法。';
+                '按七层策略搜索，实时保留通过回放的最低耗丹路线。';
             document.querySelector('#aiPredictionPanel .ai-kicker').textContent = 'LOCAL WASH ROUTE PLANNER';
             refresh();
         } else if (!panel.hidden) {
@@ -43,10 +43,6 @@
                 <label>存档人物<select id="wpRole"><option value="">请先导入存档</option></select></label>
                 <label>VIP<select id="wpVip"><option value="0">无 VIP</option><option value="1" selected>VIP 1+</option><option value="2">VIP 2+</option></select></label>
                 <label>最大耗丹数量<input id="wpBudget" type="number" min="0" max="20000" step="100" value="5000"></label>
-                <label>搜索方式<select id="wpDepth">
-                    <option value="1">策略 3 层</option><option value="2" selected>策略 5 层</option>
-                    <option value="3">策略 7 层</option><option value="0">直接穷举</option>
-                </select></label>
                 <label>开槽范围<select id="wpSlots"><option value="4">允许逐步开到四槽</option><option value="0">只用当前槽数</option></select></label><label>参考路线（选填）<input type="file" id="wpReference" accept=".txt,.md"></label><button type="button" id="wpForget" class="btn btn-reset" hidden>移除参考路线</button>
                 <label>可用洗髓丹<input id="wpBag" type="number" min="0" step="1" placeholder="选择人物后读取" disabled></label>
                 <button id="wpResetBag" type="button" class="btn btn-reset" disabled>恢复存档丹数</button>
@@ -67,18 +63,17 @@
                 <button id="wpPreset" type="button" class="btn btn-reset">金顶混</button>
                 <button id="wpClear" type="button" class="btn btn-reset">清空选择</button>
             </div>
-            <p class="w2-muted">必选脉全部取得，每个兼容组至少取得一条，合计最多四槽。策略阶段轮流扩展不同起点。穷举按耗丹从低到高展开，含零丹置换；只计洗髓丹，开槽需自行满足资质条件。大预算可能耗时很长，可在本页暂停续搜。</p>
+            <p class="w2-muted">必选脉全部取得，每个兼容组至少取得一条，合计最多四槽。开槽需在游戏中满足资质条件。策略会比较不同开槽时机、取脉顺序和连续置换的耗丹。</p>
             <p class="w2-credit">特别鸣谢 B站大佬「庸丶人」提供欧气种子路线、吞脉/跳脉及统一路线构造的研究方案</p>
             <div id="wpTargets" class="w2-targets"></div>
             <p id="wpRequirements" class="w2-requirements"></p>
         </section>
-        <label class="wp-auto"><input type="checkbox" id="wpAutoExact">策略结束后自动穷举</label>
         <div id="wpStatusBox" class="wp-status-box" data-state="idle" aria-label="搜索状态">
             <div><strong id="wpStatus" role="status">等待选择人物</strong><p id="wpDetail" hidden></p></div>
-            <div class="wp-best" hidden id="wpBestBox"><span>当前最低丹耗</span><strong id="wpBest"></strong></div>
+            <div class="wp-best" hidden id="wpBestBox"><span>本次找到的最低丹耗</span><strong id="wpBest"></strong></div>
         </div>
-        <div class="w2-actions"><button id="wpExact" class="btn btn-ai-predict" hidden>开始穷举</button>
-            <button id="wpRun" class="btn btn-ai-predict" disabled>开始策略搜索</button>
+        <div class="w2-actions">
+            <button id="wpRun" class="btn btn-ai-predict" disabled>开始七层搜索</button>
             <button id="wpPause" class="btn btn-reset" hidden>暂停</button><button id="wpStop" class="btn btn-reset" hidden>停止搜索</button>
             <button id="wpExport" class="btn btn-reset" disabled>导出路线</button></div>
         <div id="wpResults"><div class="ai-result-empty">选择人物及目标后开始规划。</div></div>`;
@@ -100,12 +95,7 @@
         worker?.terminate(); worker = null; running = false;
         paused = false;
         phase = 'idle';
-        $('Pause').hidden = $('Exact').hidden = true;
-        $('Exact').disabled = false;
-        $('AutoExact').disabled = $('Depth').value === '0';
-        $('Run').textContent = $('Depth').value === '0' ? '开始穷举' : '开始策略搜索';
-        if (dbName && window.indexedDB) indexedDB.deleteDatabase(dbName);
-        dbName = null;
+        $('Pause').hidden = true;
         $('Stop').hidden = true;
         $('Run').disabled = !raw || !available.length;
         if (text) status(text);
@@ -199,10 +189,10 @@
         const routes = result.routes || [];
         $('Best').textContent = routes.length ? routes[0].totalPills.toLocaleString() + ' 丹' : '暂无路线';
         $('Export').disabled = !routes.length;
-        $('Results').innerHTML = routes.length ? `<p class="w2-muted">${result.proof === 'optimal' ? '本次存档与所选开槽范围内，已证明最低丹耗。' : '已找到 ' + routes.length + ' 条已回放候选，尚未证明最低丹耗。'}</p>` + routes.slice(0, 20).map((r, i) => {
+        $('Results').innerHTML = routes.length ? routes.slice(0, 20).map((r, i) => {
             const remaining = bag - Number(r.totalPills || 0);
             const method = r.kind === 'personal-start' ? '存档起点' : r.kind === 'personal-reference' ? '参考路线回放'
-                : r.kind === 'personal-exact' ? '组合穷举' : r.strategyLabel || '策略搜索';
+                : r.strategyLabel || '七层策略';
             return `<details class="w2-route" ${i === 0 ? 'open' : ''}><summary><strong>路线 ${i + 1} · ${Number(r.totalPills).toLocaleString()} 丹</strong><span>${esc(method)} · ${Number(r.totalWashes)} 次洗脉 · ${remaining < 0 ? '缺' + -remaining : '余' + remaining} 丹</span></summary><p>最终天赋：${esc((r.finalTalents || []).map(t => t.name || name(t.id)).join('、'))}</p><div class="w2-table"><table><thead><tr><th>步骤</th><th>操作与核对</th><th>本步丹耗</th><th>累计丹耗</th><th>剩余丹数</th></tr></thead><tbody>${(r.steps || []).map((step, n) => `<tr><td>${n + 1}</td><td><strong>${esc(step.label)}</strong><p>${esc(step.detail)}</p><small>${esc((step.after?.talents || []).map(t => (t.name || name(t.id)) + (t.locked ? '（锁）' : '')).join('、'))}</small></td><td>${Number(step.pills || 0)}</td><td>${Number(step.cumulativePills || 0)}</td><td>${bag - Number(step.cumulativePills || 0)}</td></tr>`).join('')}</tbody></table></div></details>`;
         }).join('') : `<div class="ai-result-empty">${esc(result.noResultReason || '本轮搜索暂未找到路线，可以增加耗丹上限或调整目标。')}</div>`;
     }
@@ -215,55 +205,32 @@
             const budget = Number($('Budget').value);
             if (!Number.isInteger(budget) || budget < 0 || budget > 20000) throw new Error('耗丹上限须为 0–20000 的整数。');
             const selection = AutoWash2Model.targets(raw, assignments, TALENT_DATA);
-            const mode = $('Depth').value;
             invalidate();
             running = true; $('Run').disabled = true; $('Stop').hidden = false;
             const id = ++request, input = {initialState: clone(raw), ...selection,
                 bagPills: bag, hasBagPills: true, dlcMode: false,
-                options: {maxTotalPills:budget,depthLevel:Number(mode),strategyFirst:mode !== '0',
-                    autoExact:$('AutoExact').checked,maxZi:Number($('Slots').value) ? 154 : raw.zizhi,referenceText}};
+                options: {maxTotalPills:budget,maxZi:Number($('Slots').value) ? 154 : raw.zizhi,referenceText}};
             const w = makeWorker();
-            dbName = 'personal-wash-' + crypto.randomUUID();
-            $('AutoExact').disabled = true;
             $('BestBox').hidden = false;
             $('Best').textContent = '暂无路线';
             $('Results').innerHTML = '';
             phase = 'starting';
             showProgress('正在准备搜索', referenceText ? '正在回放参考路线。' : '正在读取存档起点。');
-            function exactScope() {
-                const best = lastResult?.routes?.[0]?.totalPills;
-                if (best === 0) return '已取得零丹路线，正在确认最低丹耗。';
-                return best == null ? '搜索上限 ' + budget.toLocaleString() + ' 丹。'
-                    : '已有 ' + best.toLocaleString() + ' 丹路线，只检查 ' + (best-1).toLocaleString() + ' 丹以内的走法。';
-            }
             w.onmessage = ({data}) => {
                 if (data.requestId !== id || request !== id) return;
                 if (data.type === 'progress') {
                     const p = data.progress;
                     if (p.layer != null) showProgress('策略搜索中 · 第 ' + p.layer + ' / ' + p.layers + ' 层',
                         '第 ' + p.pass + ' / ' + p.passes + ' 轮 · ' + p.method + ' · 本层已试洗 ' + p.washes.toLocaleString() + ' 次');
-                    else if (p.expanded != null) showProgress('穷举中 · 正在检查 ' + p.cost.toLocaleString() + ' 丹的走法',
-                        '已展开 ' + p.expanded.toLocaleString() + ' 个状态。' + exactScope());
                     else showProgress(progressTitle,p.message);
                 }
                 if (data.type === 'candidate') renderResult(data.result);
                 if (data.type === 'phase') {
                     phase = data.phase;
-                    const waiting = phase === 'awaitingExact';
-                    running = !waiting;
-                    $('Pause').hidden = $('Stop').hidden = waiting;
+                    $('Pause').hidden = false;
                     $('Pause').disabled = false;
                     $('Pause').textContent = '暂停';
-                    $('Run').disabled = !waiting;
-                    $('Run').textContent = waiting ? '重新搜索策略' : (mode === '0' ? '开始穷举' : '开始策略搜索');
-                    $('Exact').hidden = !waiting;
-                    $('Exact').disabled = false;
-                    if (waiting) {
-                        const hint = lastResult?.routes?.length ? '可导出当前路线，或点「开始穷举」检查有没有更省的走法。'
-                            : '尚未找到路线。点「开始穷举」可检查当前预算内的所有组合。';
-                        status('策略已结束 · 等待手动穷举',false,(data.reason || '') + hint);
-                    } else if (phase === 'exact') showProgress('正在穷举',exactScope());
-                    else showProgress('正在搜索策略',input.options.autoExact ? '结束后将自动穷举。' : '策略结束后由你决定是否穷举。');
+                    showProgress('正在搜索七层策略','比较不同开槽时机和取脉顺序。');
                 }
                 if (data.type === 'paused' || data.type === 'resumed') {
                     paused = data.type === 'paused'; $('Pause').disabled = false;
@@ -273,23 +240,18 @@
                 if (data.type === 'error') { stop(); status(data.error, true); }
                 if (data.type === 'result') {
                     renderResult(data.result); stop(); phase = 'done';
-                    status(data.result.proof === 'optimal' ? '穷举完成 · 已证最低丹耗' : '穷举完成 · 预算内无解',
-                        false,'已检查本次存档、目标和开槽范围。');
+                    const best = data.result.routes[0];
+                    status('七层搜索已结束',false,best ? '本次找到的最低丹耗为 ' + best.totalPills.toLocaleString() + ' 丹，可导出路线。'
+                        : data.result.noResultReason);
                 }
             };
-            w.postMessage({type: 'search', requestId: id, input, dbName});
+            w.postMessage({type: 'search', requestId: id, input});
         } catch (error) { stop(); status(error.message, true); }
     }
     $('Slots').addEventListener('change', invalidate);
     $('Pause').addEventListener('click', () => {
         $('Pause').disabled = true;
         worker?.postMessage({type:paused ? 'resume' : 'pause', requestId:request});
-    });
-    $('Exact').addEventListener('click', () => {
-        refresh();
-        if (phase !== 'awaitingExact' || !worker) return;
-        $('Exact').disabled = $('Run').disabled = true;
-        worker.postMessage({type:'exact',requestId:request});
     });
     $('Forget').addEventListener('click', () => {
         refVersion++; referenceText = ''; $('Reference').value = ''; $('Forget').hidden = true; invalidate();
@@ -326,7 +288,6 @@
         invalidate(); customBag = null; bag = savedBag; $('Bag').value = bag;
         status('已恢复存档中的洗髓丹数量。');
     });
-    $('Depth').addEventListener('change', invalidate);
     $('Filter').addEventListener('input', renderTargets);
     $('Targets').addEventListener('click', event => {
         const button = event.target.closest('[data-id]'); if (!button || button.disabled) return;
@@ -347,8 +308,8 @@
     $('Run').addEventListener('click', run);
     $('Stop').addEventListener('click', () => {
         const best = lastResult?.routes?.[0];
-        stop(best ? '已停止，保留 ' + best.totalPills + ' 丹候选，可导出。最低丹耗尚未证实。'
-            : '已停止，尚未找到候选。当前预算内是否有解仍待验证。');
+        stop(best ? '已停止，保留 ' + best.totalPills + ' 丹路线，可导出。'
+            : '已停止，本次尚未找到路线。');
     });
     $('Export').addEventListener('click', () => {
         if (!lastResult?.routes?.length) return;

@@ -26,6 +26,8 @@ jobs:
           node-version: '22'
       - name: Improved wash engine and legacy route replay
         run: node tests/test_auto_wash2.cjs
+      - name: Personal seven-layer search and route replay
+        run: node tests/test_personal_wash.cjs
       - name: Dynamic wash eligibility regression
         run: node tests/test_wash_dynamic_pool.cjs
       - name: Equipment orange blueprint and material regression

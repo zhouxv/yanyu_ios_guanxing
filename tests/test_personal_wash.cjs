@@ -57,39 +57,16 @@ async function checkStrategyWorkflow() {
     const once = engine.wash(engine.initialState(raw),[]);
     const purple = once.state.talents.find(id=>engine.quality(id)===4);
     assert.ok(purple);
-    for (const depthLevel of [1,2,3]) {
-        for (const autoExact of [false,true]) {
-            for (const cap of [once.cost-1,once.cost]) {
-                const job = input(raw,[purple],[],cap,raw.zizhi);
-                Object.assign(job.options,{depthLevel,strategyFirst:true,autoExact});
-                const messages = [];
-                let notifyWaiting;
-                const waiting = new Promise(resolve=>{notifyWaiting=resolve;});
-                global.postMessage = m=>{
-                    messages.push(m);
-                    if (m.phase==='awaitingExact') notifyWaiting();
-                };
-                const finished = self.onmessage({data:{type:'search',requestId:4,input:job}});
-                if (!autoExact) {
-                    await Promise.race([waiting,finished]);
-                    assert.equal(messages.at(-1).phase,'awaitingExact');
-                    const best = messages.find(m=>m.type==='candidate')?.result.routes[0];
-                    assert.equal(best?.totalPills,cap===once.cost ? cap : undefined);
-                    await self.onmessage({data:{type:'exact',requestId:3}});
-                    await new Promise(resolve=>setTimeout(resolve,10));
-                    assert.ok(!messages.some(m=>m.phase==='exact' || m.type==='result'));
-                    await self.onmessage({data:{type:'exact',requestId:4}});
-                    await self.onmessage({data:{type:'exact',requestId:4}});
-                }
-                await finished;
-                assert.equal(messages.filter(m=>m.phase==='awaitingExact').length,autoExact ? 0 : 1);
-                assert.equal(messages.filter(m=>m.phase==='exact').length,1);
-                assert.ok(messages.some(m=>m.progress?.layers===2*depthLevel+1 && m.progress.layer===1));
-                const result = messages.at(-1).result;
-                assert.equal(result.proof,cap===once.cost ? 'optimal' : 'infeasible');
-                if (cap===once.cost) assert.equal(result.routes[0].totalPills,cap);
-            }
-        }
+    for (const cap of [once.cost - 1, once.cost]) {
+        const job = input(raw,[purple],[],cap,raw.zizhi);
+        const messages = [];
+        global.postMessage = m => messages.push(m);
+        await self.onmessage({data:{type:'search',input:job,requestId:1}});
+        const last = messages.at(-1);
+        assert.equal(last.type,'result',last.error);
+        assert.ok(messages.some(m => m.progress?.layers === 7 && m.progress.layer === 1));
+        assert.equal(last.result.routes.length, cap === once.cost ? 1 : 0);
+        if (cap === once.cost) assert.equal(last.result.routes[0].totalPills,cap);
     }
 }
 async function main() {
@@ -125,11 +102,12 @@ async function main() {
                 for (const cap of new Set([budget,Math.max(0,Math.min(budget,minimum-1))])) {
                     const job = input(initial,required,groups,cap,maxZi);
                     const result = await run(job);
-                    assert.equal(result.proof,minimum<=cap ? 'optimal' : 'infeasible');
+                    assert.equal(result.routes.length,minimum<=cap ? 1 : 0,
+                        JSON.stringify({start:initial.zizhi,seed:initial.seed,required,groups,cap,maxZi,minimum}));
                     if (minimum<=cap) {
                         const route = result.routes[0];
                         assert.equal(route.totalPills,minimum);
-                        assert.ok(route.verified && route.verifiedOptimal);
+                        assert.ok(route.verified && !route.verifiedOptimal);
                         const imported = PersonalWashSearch.reference(PersonalWashSearch.context(job),report(route));
                         assert.equal(imported.totalPills,minimum);
                     }
@@ -152,7 +130,26 @@ async function main() {
         chained=true;
     }
     assert.ok(chained);
-    console.log('PASS',checks,'budget / goal comparisons and a zero-cost exchange chain');
+    // With these synthetic rolls only the last slot can be exchanged. The
+    // target is the fifth draw; two same-name exchanges advance the luck RNG.
+    const startChain = {...raw,zizhi:154,luck_seed:118,luck_seed_inited:true,
+        talents:[211,184,171,264].map(id => ({id}))};
+    const chainJob = input(startChain,[271],[],0,154);
+    const [five] = (await run(chainJob)).routes;
+    assert.ok(five.verified);
+    assert.equal(five.totalPills,0);
+    assert.equal(five.totalWashes,0);
+    assert.equal(five.exchangeCount,5);
+    assert.deepEqual(five.steps.filter(s => s.type === 'exchange').map(s => s.after.talents.at(-1).id),
+        [264,267,264,264,271]);
+    const abbreviated = report(five).replace(/锁定「[^」]+」，置换「/g,'点击置换「');
+    const replayCtx = PersonalWashSearch.context(chainJob);
+    const invalid = abbreviated.replace(/应得到「[^」]+」/,'应得到「错误的天赋」');
+    assert.throws(() => PersonalWashSearch.reference(replayCtx,invalid),/置换结果不同/);
+    const replayed = PersonalWashSearch.reference(replayCtx,invalid + '\n\n' + abbreviated.replace('路线 1','路线 2'));
+    assert.equal(replayed.exchangeCount,5);
+    assert.deepEqual(replayed.finalState,five.finalState);
+    console.log('PASS',checks,'budget / goal comparisons, seven-layer workflow, five free exchanges and text replay');
 
     // Optional local replay: SAVE CHARACTER ROUTE... . No private fixture is bundled.
     const [savePath,roleName,...files] = process.argv.slice(2);
