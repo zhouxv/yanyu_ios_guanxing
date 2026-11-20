@@ -219,21 +219,30 @@
                                     <label><input type="radio" name="sqSource" value="shop">商店 <span data-count="shop"></span></label>
                                 </fieldset>
                                 <div class="config-group"><label for="sqFind">按姓名或已有天赋找弟子</label><input id="sqFind" type="search" placeholder="输入弟子名或天赋名"></div>
-                                <p class="hengshan-ledger-note">直接勾选可以混选。「只选当前结果」替换名单，「追加当前结果」保留之前已选的人。</p>
-                                <div class="seq-row"><button class="btn btn-wash-custom" type="button" id="sqOnly">只选当前结果</button><button class="btn btn-wash-custom" type="button" id="sqAll">追加当前结果</button><button class="btn btn-reset" type="button" id="sqNone">取消勾选当前结果</button></div>
+                                <p class="hengshan-ledger-note">当前列表包含符合来源、日期和搜索条件的所有弟子。切换来源后，可以用「全选列表（保留已选）」把两边的弟子一起勾上。</p>
+                                <div class="seq-row"><button class="btn btn-wash-custom" type="button" id="sqAll">全选列表（保留已选）</button><button class="btn btn-wash-custom" type="button" id="sqOnly">只选列表内</button><button class="btn btn-reset" type="button" id="sqNone">取消列表内勾选</button></div>
                                 <div id="sqStudents" class="seq-roster"></div>
                             </div>
                             <div id="sqShop" class="seq-subpanel">
                                 <h3>商店招募与刷新 <small>仅商店需要</small></h3>
                                 <p id="sqCoverage" class="hengshan-message" aria-live="polite">导入存档后显示可预测的招募日期。</p>
-                                <p class="hengshan-ledger-note">北京时间 05:00 换日，存档日算第 1 天。招募日期含首尾，单日就把两栏填成同一天。</p>
+                                <p class="hengshan-ledger-note">北京时间 05:00 换日，存档日算第 1 天。招募日期含首尾。只查一天时，两栏都选这一天。</p>
                                 <div class="seq-fields seq-shop-fields">
-                                    <div class="config-group"><label for="sqDays">预测天数（1～120）</label><input id="sqDays" type="number" min="1" max="120" value="30"></div>
-                                    <div class="config-group"><label for="sqFrom">招募开始日</label><input type="date" id="sqFrom" aria-describedby="sqDateHint"></div>
-                                    <div class="config-group"><label for="sqTo">招募结束日</label><input type="date" id="sqTo" aria-describedby="sqDateHint"></div>
+                                    <div class="config-group"><label for="sqDays">预测天数（1～120）</label><input id="sqDays" type="number" min="1" max="120" value="7"></div>
+                                    <div class="config-group">
+                                        <label for="sqFromPick" id="sqFromLabel">招募开始日</label>
+                                        <input type="date" id="sqFrom" hidden>
+                                        <button class="btn seq-date-field" type="button" id="sqFromPick" aria-haspopup="dialog" aria-controls="sqCalendar" aria-labelledby="sqFromLabel sqFromValue" aria-describedby="sqDateHint"><span id="sqFromValue">选择开始日</span><span class="seq-calendar-icon" aria-hidden="true"></span></button>
+                                    </div>
+                                    <div class="config-group">
+                                        <label for="sqToPick" id="sqToLabel">招募结束日</label>
+                                        <input type="date" id="sqTo" hidden>
+                                        <button class="btn seq-date-field" type="button" id="sqToPick" aria-haspopup="dialog" aria-controls="sqCalendar" aria-labelledby="sqToLabel sqToValue" aria-describedby="sqDateHint"><span id="sqToValue">选择结束日</span><span class="seq-calendar-icon" aria-hidden="true"></span></button>
+                                    </div>
                                 </div>
-                                <div class="seq-row"><button class="btn btn-reset" type="button" id="sqClearDates">清空日期</button><button class="btn btn-wash-custom" type="button" id="sqExtend" hidden></button></div>
+                                <div class="seq-row"><button class="btn btn-wash-custom" type="button" id="sqShopWeek">恢复 7 天全选</button><button class="btn btn-reset" type="button" id="sqClearDates">清空日期</button><button class="btn btn-wash-custom" type="button" id="sqExtend" hidden></button></div>
                                 <p id="sqDateHint" class="hengshan-message" role="status"></p>
+                                <p id="sqShopSelection" class="hengshan-ledger-note"></p>
                                 <h4>逐日刷新计划</h4><p class="hengshan-ledger-note">勾选表示当天会手动刷新一次。新配置默认每天手刷；改一天会影响后续人选。</p>
                                 <div class="seq-row"><button class="btn btn-wash-custom" id="sqManualAll" type="button">每天手动刷新</button><button class="btn btn-wash-custom" id="sqManualNone" type="button">每天只自动刷新</button></div>
                                 <div id="sqManualDays" class="seq-check-grid"></div>
@@ -266,21 +275,34 @@
                 <section id="sqResultSection" class="config-panel">
                     <div class="panel-header"><h2>5 · 查看已复验路线</h2><span id="sqResultCount" class="as-result-skip" aria-live="polite"></span></div>
                     <div class="seq-row seq-filterbar"><div class="config-group"><label for="sqResultsFind">查找弟子、日期、方案或天赋</label><input id="sqResultsFind" type="search" placeholder="例如：姓名、招募日期或胆小鬼"></div>
-                        <div class="config-group"><label for="sqResultSource">结果来源</label><select id="sqResultSource"><option value="all">全部来源</option><option value="enrolled">在册弟子</option><option value="backpack">背包弟子</option><option value="shop">商店弟子</option></select></div>
-                        <button class="btn btn-wash-custom" id="sqImport" type="button" disabled>导入旧助手路线文件夹</button><input id="sqFiles" type="file" webkitdirectory multiple hidden></div>
+                        <div class="config-group"><label for="sqResultSource">结果来源</label><select id="sqResultSource"><option value="all">全部来源</option><option value="enrolled">在册弟子</option><option value="backpack">背包弟子</option><option value="shop">商店弟子</option></select></div></div>
                     <div id="sqResults" class="seq-columns seq-result-browser">
                         <div><h3>弟子目录</h3><div id="sqPeople"></div>
                             <nav class="seq-row" id="sqPager" aria-label="弟子目录分页" hidden><button type="button" class="btn btn-wash-custom" id="sqPrev">上一页</button><span id="sqPage" class="as-result-skip"></span><button type="button" class="btn btn-wash-custom" id="sqNext">下一页</button></nav></div>
                         <div class="seq-subpanel"><h3 id="sqPlansTitle">天赋方案</h3><div id="sqPlans"></div><article id="sqRoute" hidden></article></div>
                     </div>
                     <div class="seq-divider" id="sqBulk"><h3>批量导出</h3>
-                        <p class="hengshan-ledger-note">一个 ZIP 包含弟子索引、每条路线的操作步骤和可再次导入的 JSON。</p>
+                        <p class="hengshan-ledger-note">一个 ZIP 包含弟子索引、每条路线的操作步骤和完整 JSON。</p>
                         <div class="seq-row"><label class="as-check"><input type="radio" name="sqExportScope" value="filtered" checked> 当前筛选（跨所有页）<span id="sqExportFiltered">0 条</span></label>
                             <label class="as-check"><input type="radio" name="sqExportScope" value="all"> 全部已复验 <span id="sqExportAll">0 条</span></label>
                             <button class="btn btn-wash-custom" id="sqBulkExport" type="button" disabled>批量导出 ZIP</button></div>
                         <p id="sqExportNote" class="hengshan-message" role="status"></p>
                     </div>
                 </section>
+                <dialog id="sqCalendar" class="seq-calendar" aria-labelledby="sqCalendarTitle">
+                    <div class="panel-header"><h2 id="sqCalendarTitle">选择招募日期</h2><button class="btn btn-wash-custom" type="button" id="sqCalendarClose">关闭</button></div>
+                    <div class="seq-calendar-nav">
+                        <button class="btn btn-wash-custom" type="button" id="sqCalendarPrev" aria-label="上个月">‹</button>
+                        <p id="sqCalendarMonth" aria-live="polite"></p>
+                        <button class="btn btn-wash-custom" type="button" id="sqCalendarNext" aria-label="下个月">›</button>
+                    </div>
+                    <table class="seq-calendar-days" aria-labelledby="sqCalendarMonth">
+                        <thead><tr><th scope="col">一</th><th scope="col">二</th><th scope="col">三</th><th scope="col">四</th><th scope="col">五</th><th scope="col">六</th><th scope="col">日</th></tr></thead>
+                        <tbody id="sqCalendarDays"></tbody>
+                    </table>
+                    <p class="hengshan-ledger-note" id="sqCalendarHint"></p>
+                    <button class="btn btn-reset" type="button" id="sqCalendarClear">清空本栏</button>
+                </dialog>
             </div>
         </main>
 
@@ -304,6 +326,7 @@
     <script src="./sequence_core.js"></script>
     <script src="./sequence_verify.js"></script>
     <script src="./sequence_results.js"></script>
+    <script src="./sequence_calendar.js"></script>
     <script src="./sequence_view.js"></script>
 </body>
 </html>

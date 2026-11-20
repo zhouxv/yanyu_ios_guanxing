@@ -1,4 +1,4 @@
-"""A self-contained, offline directory and re-importable files for verified routes."""
+"""A self-contained, offline directory of verified routes."""
 from html import escape
 import json
 import re
