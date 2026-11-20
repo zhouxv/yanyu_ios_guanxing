@@ -199,7 +199,7 @@
                 <section class="config-panel">
                     <div class="panel-header"><h2 id="sqGuide">弟子洗髓序列（自用） · 使用步骤</h2></div>
                     <ol class="seq-guide as-plan-list" aria-labelledby="sqGuide">
-                        <li><a href="#sqRosterSection">选择弟子</a>　在册、背包和商店弟子可以一起推演。只洗已有弟子，直接勾人；只有预测商店人选才需要设置日期和刷新。</li>
+                        <li><a href="#sqRosterSection">选择弟子</a>　勾选要推演的在册或商店弟子。商店默认从存档游戏日起预测 7 天。</li>
                         <li><a href="#sqGroupsSection">选择天赋组</a>　勾选常用方案，或点三个天赋保存新组。三个目标须同时在身上，等级和顺序不限。</li>
                         <li><a href="#sqSearchSection">设定搜索范围</a>　填写最多洗几次、每项最多检查多少状态。默认从 0 次洗到 4 次，优先找少洗的路线。</li>
                         <li><a href="#sqRunSection">开始推演</a>　按天赋组依次跑所选弟子。可以暂停；关掉页面后，回到同一存档点「继续上次批次」。</li>
@@ -212,15 +212,14 @@
                         <div class="panel-header"><h2>1 · 选择弟子</h2><span id="sqSelected" class="as-result-skip"></span></div>
                         <div class="seq-columns">
                             <div>
-                                <fieldset id="sqSource" class="seq-sources"><legend>弟子来源</legend>
-                                    <label><input type="radio" name="sqSource" value="all" checked>全部 <span data-count="all"></span></label>
-                                    <label><input type="radio" name="sqSource" value="enrolled">在册 <span data-count="enrolled"></span></label>
-                                    <label><input type="radio" name="sqSource" value="backpack">背包 <span data-count="backpack"></span></label>
-                                    <label><input type="radio" name="sqSource" value="shop">商店 <span data-count="shop"></span></label>
-                                </fieldset>
                                 <div class="config-group"><label for="sqFind">按姓名或已有天赋找弟子</label><input id="sqFind" type="search" placeholder="输入弟子名或天赋名"></div>
-                                <p class="hengshan-ledger-note">当前列表包含符合来源、日期和搜索条件的所有弟子。切换来源后，可以用「全选列表（保留已选）」把两边的弟子一起勾上。</p>
-                                <div class="seq-row"><button class="btn btn-wash-custom" type="button" id="sqAll">全选列表（保留已选）</button><button class="btn btn-wash-custom" type="button" id="sqOnly">只选列表内</button><button class="btn btn-reset" type="button" id="sqNone">取消列表内勾选</button></div>
+                                <p class="hengshan-ledger-note">「全选」「仅在册」「仅商店」按当前列表重新勾选。「全选取消」清空所有勾选。</p>
+                                <div class="seq-row">
+                                    <button class="btn btn-wash-custom" type="button" id="sqAll">全选</button>
+                                    <button class="btn btn-reset" type="button" id="sqNone">全选取消</button>
+                                    <button class="btn btn-wash-custom" type="button" id="sqOnlyEnrolled">仅在册</button>
+                                    <button class="btn btn-wash-custom" type="button" id="sqOnlyShop">仅商店</button>
+                                </div>
                                 <div id="sqStudents" class="seq-roster"></div>
                             </div>
                             <div id="sqShop" class="seq-subpanel">
@@ -240,9 +239,8 @@
                                         <button class="btn seq-date-field" type="button" id="sqToPick" aria-haspopup="dialog" aria-controls="sqCalendar" aria-labelledby="sqToLabel sqToValue" aria-describedby="sqDateHint"><span id="sqToValue">选择结束日</span><span class="seq-calendar-icon" aria-hidden="true"></span></button>
                                     </div>
                                 </div>
-                                <div class="seq-row"><button class="btn btn-wash-custom" type="button" id="sqShopWeek">恢复 7 天全选</button><button class="btn btn-reset" type="button" id="sqClearDates">清空日期</button><button class="btn btn-wash-custom" type="button" id="sqExtend" hidden></button></div>
+                                <div class="seq-row"><button class="btn btn-reset" type="button" id="sqClearDates">清空日期</button><button class="btn btn-wash-custom" type="button" id="sqExtend" hidden></button></div>
                                 <p id="sqDateHint" class="hengshan-message" role="status"></p>
-                                <p id="sqShopSelection" class="hengshan-ledger-note"></p>
                                 <h4>逐日刷新计划</h4><p class="hengshan-ledger-note">勾选表示当天会手动刷新一次。新配置默认每天手刷；改一天会影响后续人选。</p>
                                 <div class="seq-row"><button class="btn btn-wash-custom" id="sqManualAll" type="button">每天手动刷新</button><button class="btn btn-wash-custom" id="sqManualNone" type="button">每天只自动刷新</button></div>
                                 <div id="sqManualDays" class="seq-check-grid"></div>
@@ -275,7 +273,7 @@
                 <section id="sqResultSection" class="config-panel">
                     <div class="panel-header"><h2>5 · 查看已复验路线</h2><span id="sqResultCount" class="as-result-skip" aria-live="polite"></span></div>
                     <div class="seq-row seq-filterbar"><div class="config-group"><label for="sqResultsFind">查找弟子、日期、方案或天赋</label><input id="sqResultsFind" type="search" placeholder="例如：姓名、招募日期或胆小鬼"></div>
-                        <div class="config-group"><label for="sqResultSource">结果来源</label><select id="sqResultSource"><option value="all">全部来源</option><option value="enrolled">在册弟子</option><option value="backpack">背包弟子</option><option value="shop">商店弟子</option></select></div></div>
+                        <div class="config-group"><label for="sqResultSource">结果来源</label><select id="sqResultSource"><option value="all">全部来源</option><option value="enrolled">在册弟子</option><option value="shop">商店弟子</option></select></div></div>
                     <div id="sqResults" class="seq-columns seq-result-browser">
                         <div><h3>弟子目录</h3><div id="sqPeople"></div>
                             <nav class="seq-row" id="sqPager" aria-label="弟子目录分页" hidden><button type="button" class="btn btn-wash-custom" id="sqPrev">上一页</button><span id="sqPage" class="as-result-skip"></span><button type="button" class="btn btn-wash-custom" id="sqNext">下一页</button></nav></div>

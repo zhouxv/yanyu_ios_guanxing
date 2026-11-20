@@ -5,8 +5,8 @@
 .seq #sqSetup { display: grid; gap: 1rem; }
 .seq .config-panel { margin: 0; }
 .seq .panel-header { gap: .45rem 1rem; flex-wrap: wrap; }
-.seq h3, .seq h4, .seq legend { margin: 0 0 .4rem; padding: 0; color: var(--text-primary); font-family: var(--font-serif); font-size: .96rem; }
-.seq h4, .seq legend { font-size: .86rem; }
+.seq h3, .seq h4 { margin: 0 0 .4rem; padding: 0; color: var(--text-primary); font-family: var(--font-serif); font-size: .96rem; }
+.seq h4 { font-size: .86rem; }
 .seq h3 small, .seq .seq-meta { color: var(--text-muted); font: normal .76rem var(--font-sans); }
 .seq .seq-guide { list-style: decimal outside; padding-inline-start: 1.6rem; margin: 0; }
 .seq .seq-guide li { display: list-item; }
@@ -54,11 +54,8 @@
 .seq .seq-filterbar { align-items: end; }
 .seq .seq-filterbar .config-group:first-child { flex: 2 1 15rem; }
 .seq .seq-filterbar .config-group:nth-child(2) { flex: 1 1 8rem; }
-.seq .seq-sources { margin-bottom: .65rem; }
-.seq .seq-sources label { display: inline-flex; align-items: center; gap: .25rem; margin: .12rem .15rem .12rem 0; padding: .25rem .4rem; font-size: .82rem; border: 1px solid var(--border-color); border-radius: 5px; cursor: pointer; }
-.seq .seq-sources label:has(:checked), .seq button.seq-person[aria-pressed=true] { color: var(--text-primary); border-color: var(--border-accent); background: var(--bg-card-hover); }
+.seq button.seq-person[aria-pressed=true] { color: var(--text-primary); border-color: var(--border-accent); background: var(--bg-card-hover); }
 .seq input[type=radio], .seq input[type=checkbox] { width: auto; margin: 0; accent-color: var(--purple-bright); }
-.seq .seq-sources span { color: var(--text-muted); font-size: .75rem; }
 .seq .seq-roster, .seq .seq-check-grid { overflow: auto; scrollbar-gutter: stable; }
 .seq .seq-roster { max-height: 22rem; }
 .seq .seq-roster label { display: flex; width: 100%; gap: .45rem; padding: .28rem 0; line-height: 1.4; }

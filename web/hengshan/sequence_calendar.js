@@ -125,12 +125,12 @@
         for (const field of fields) field.trigger.onclick = () => open(field);
 
         function update(calendar, range) {
-            const available = Boolean(calendar.last && range.applies);
+            const available = Boolean(calendar.last);
             if (!available || period !== calendar) close();
             period = calendar;
             for (const field of fields) {
                 field.trigger.disabled = !available;
-                field.trigger.setAttribute('aria-invalid', String(range.applies && !!range.invalid));
+                field.trigger.setAttribute('aria-invalid', String(!!range.invalid));
                 field.display.textContent = field.input.value || field.placeholder;
             }
         }

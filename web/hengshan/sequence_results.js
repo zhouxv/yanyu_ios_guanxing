@@ -2,7 +2,7 @@
 (function () {
     'use strict';
     const PAGE_SIZE = 10;
-    const SOURCES = {enrolled:'在册', backpack:'背包', shop:'商店'};
+    const SOURCES = {enrolled:'在册', shop:'商店'};
     const order = Object.keys(SOURCES);
     const compare = new Intl.Collator('zh-CN', {numeric:true}).compare;
     function make(tag, text, cls) {
@@ -113,6 +113,6 @@
             catch(e){el('ExportNote').textContent='导出失败：'+e.message;}
             finally{busy=false;exportState();}
         };
-        return {update(list){rows=list;people=groupRoutes(list);refilter(false);}};
+        return {update(list){rows=list.filter(row=>Object.hasOwn(SOURCES,row.source));people=groupRoutes(rows);refilter(false);}};
     };
 })();
