@@ -41,19 +41,34 @@
                 for (const item of result.routes || []) {
                     if (!item.verified || item.totalPills > cap) continue;
                     const valid = replay(ctx,item);
-                    if (valid) { accept(valid); cap = valid.totalPills-1; }
+                    if (valid) {
+                        if (valid.totalWashes > 0 && result.searchScope?.expandedNodes === 0 &&
+                                result.searchScope.rawWashesSimulated === 0)
+                            valid.strategyLabel = '上游起步候选（自用回放）';
+                        accept(valid);
+                        cap = valid.totalPills - 1;
+                    }
                 }
             }
             show();
-            const result = await root.AutoWash2Optimizer.searchWashRoutes({
+            const input = {
                 initialState:ctx.initialState, targetIds:ids, talentData:root.TALENT_DATA,
                 bagPills:ctx.bagPills, hasBagPills:ctx.hasBagPills, dlcMode:ctx.dlcMode,
                 eligibleTalentIds:ctx.eligibleTalentIds,
-                options:{maxTotalPills:cap,searchIntensity:1},
                 onCandidate:collect,onProgress:show,shouldCancel:()=>++checked>limit,yieldControl:checkpoint,
-            });
-            collect(result);
-            await checkpoint();
+            };
+            // A starting route may return before the tactical graph is visited.
+            // Keep the remaining checks and rerun at the tighter replayed ceiling.
+            let nextCap = cap;
+            while (nextCap >= 0 && checked < limit) {
+                const result = await root.AutoWash2Optimizer.searchWashRoutes({
+                    ...input, options:{maxTotalPills:nextCap, searchIntensity:1},
+                });
+                collect(result);
+                await checkpoint();
+                if (result.searchScope?.expandedNodes !== 0 || cap >= nextCap) break;
+                nextCap = cap;
+            }
         }
     }
     root.PersonalWashTactical = Object.freeze({search,replay});

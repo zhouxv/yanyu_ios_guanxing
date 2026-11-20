@@ -142,8 +142,21 @@ scripts.extend([r'''JSON.stringify((()=>{
     if (el('personalWashModePanel').hidden || !el('autoWash2ModePanel').hidden) return {error:'personal tab visibility'};
     if (el('wpRole').value || el('wpBudget').value === '1') return {error:'settings shared between tabs'};
     if (el('wpDepth') || el('wpAutoExact') || el('wpExact') || !el('wpRun').textContent.includes('七层')) return {error:'Unexpected search controls'};
+    if (!el('wpPreset').disabled) return {error:'Preset enabled before role inspection'};
+    el('wpVip').value='0';
     el('wpRole').value=state.saveRoles[0].key;
     el('wpRole').dispatchEvent(new Event('change'));
+    el('wpBudget').dispatchEvent(new Event('input'));
+    if (!el('wpPreset').disabled) return {error:'Preset enabled during role inspection'};
+    return {ready:true};
+})())''', r'''JSON.stringify((()=>{
+    const el=id=>document.getElementById(id);
+    if (el('wpPreset').disabled) return {waiting:el('wpStatus').textContent};
+    el('wpPreset').click();
+    if (!['混元奇脉','VIP 1+'].every(text=>el('wpStatus').textContent.includes(text)))
+        return {error:'Missing VIP requirement for preset'};
+    el('wpVip').value='1'; el('wpVip').dispatchEvent(new Event('change'));
+    if (!el('wpPreset').disabled) return {error:'Stale preset after VIP change'};
     return {ready:true};
 })())''', r'''JSON.stringify((()=>{
     const el=id=>document.getElementById(id);
@@ -165,7 +178,7 @@ scripts.extend([r'''JSON.stringify((()=>{
     const el=id=>document.getElementById(id);
     if (el('wpStatus').classList.contains('w2-error')) return {error:el('wpStatus').textContent};
     if (el('wpStatusBox').dataset.state !== 'done') return {waiting:el('wpStatus').textContent};
-    if (el('wpBest').textContent !== '0 丹' || !el('wpStatus').textContent.includes('七层'))
+    if (el('wpBest').textContent !== '0 丹' || !el('wpDetail').textContent.includes('0 丹'))
         return {error:'Missing zero-cost result'};
     el('btnAutoWash2Mode').click(); el('btnPersonalWashMode').click();
     if (!el('wpResults').querySelector('details') || el('wpExport').disabled) return {error:'missing exportable result'};

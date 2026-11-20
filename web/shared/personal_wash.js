@@ -60,7 +60,7 @@
             <div class="w2-fields w2-target-tools">
                 <label>筛选紫脉<input id="wpFilter" type="search" placeholder="输入名称"></label>
                 <label>选入分组<select id="wpGroup"><option value="-1">必选脉</option><option value="0">兼容组一 · 任选一条</option><option value="1">兼容组二 · 任选一条</option><option value="2">兼容组三 · 任选一条</option><option value="3">兼容组四 · 任选一条</option></select></label>
-                <button id="wpPreset" type="button" class="btn btn-reset">金顶混</button>
+                <button id="wpPreset" type="button" class="btn btn-reset" disabled>金顶混</button>
                 <button id="wpClear" type="button" class="btn btn-reset">清空选择</button>
             </div>
             <p class="w2-muted">必选脉全部取得，每个兼容组至少取得一条，合计最多四槽。开槽需在游戏中满足资质条件。策略会比较不同开槽时机、取脉顺序和连续置换的耗丹。</p>
@@ -100,8 +100,10 @@
         $('Run').disabled = !raw || !available.length;
         if (text) status(text);
     }
-    function invalidate() {
-        stop(); lastResult = null;
+    function invalidate({roleChanged = false} = {}) {
+        // Budget and lock changes can reuse the pending role inspection.
+        if (roleChanged || phase !== 'inspecting') stop();
+        lastResult = null;
         $('BestBox').hidden = true;
         status('等待开始',false,'搜索条件已更新。');
         $('Export').disabled = true;
@@ -142,6 +144,7 @@
     }
     function inspect() {
         const id = ++request;
+        phase = 'inspecting';
         status('正在读取人物可用紫脉…');
         const w = makeWorker();
         w.onmessage = ({data}) => {
@@ -151,13 +154,15 @@
             const allowed = new Set(data.summary.allowed);
             available = data.summary.purpleIds.filter(id => allowed.has(id));
             assignments = new Map([...assignments].filter(([id]) => available.includes(id)));
-            renderTargets(); $('Run').disabled = false; status('已就绪，选择目标后开始规划。');
+            phase = 'idle';
+            renderTargets(); $('Preset').disabled = false; $('Run').disabled = false;
+            status('已就绪，选择目标后开始规划。');
         };
         w.postMessage({type: 'inspect', requestId: id, raw});
     }
     function chooseRole() {
-        invalidate(); raw = null; available = []; activeRole = $('Role').value;
-        $('Run').disabled = true;
+        invalidate({roleChanged:true}); raw = null; available = []; activeRole = $('Role').value;
+        $('Preset').disabled = $('Run').disabled = true;
         const s = window.state || {}, entry = s.saveRoles?.find(e => e.key === activeRole);
         if (!entry) { $('Run').disabled = true; renderLocks(); renderTargets(); status('请选择人物。'); return; }
         try {
@@ -175,10 +180,10 @@
     function refresh() {
         const s = window.state || {}, signature = JSON.stringify([s.saveChannel, s.savePlatform, s.dlcMode]);
         if (source === s.saveData && context === signature) return;
-        source = s.saveData; context = signature; invalidate(); raw = null; available = []; assignments.clear();
+        source = s.saveData; context = signature; invalidate({roleChanged:true}); raw = null; available = []; assignments.clear();
         customBag = null; bag = savedBag = 0;
         $('Role').innerHTML = '<option value="">请选择人物</option>' + (s.saveRoles || []).map(e => `<option value="${esc(e.key)}">${esc(e.tag + ' · ' + (e.role.Name || e.role.ID))}</option>`).join('');
-        $('Role').disabled = !s.saveRoles?.length; $('Run').disabled = true;
+        $('Role').disabled = !s.saveRoles?.length; $('Preset').disabled = $('Run').disabled = true;
         $('Bag').value = ''; $('Bag').disabled = $('ResetBag').disabled = true;
         $('Summary').textContent = s.saveData ? '存档已导入，请明确选择一名人物。' : '请先在首页导入存档，再选择人物。';
         renderLocks(); renderTargets(); status('等待选择人物。');
@@ -198,7 +203,7 @@
     }
     function run() {
         refresh();
-        if (!raw || running) return;
+        if (!raw || running || phase === 'inspecting') return;
         try {
             if ($('Bag').value === '' || !Number.isSafeInteger(Number($('Bag').value)) || Number($('Bag').value) < 0)
                 throw new Error('可用洗髓丹须为非负整数。');
@@ -304,8 +309,21 @@
         renderLocks(); renderTargets();
     });
     $('Preset').addEventListener('click', () => {
-        if (![271, 272, 250].every(id => available.includes(id))) { status('当前人物无法选择完整的金顶混组合，请检查 VIP 和人物条件。', true); return; }
-        invalidate(); assignments = new Map([271, 272, 250].map(id => [id, -1])); renderTargets();
+        if ($('Preset').disabled) return;
+        const preset = [271, 272, 250];
+        const missing = preset.filter(id => !available.includes(id));
+        if (missing.length) {
+            const reasons = missing.map(id => {
+                const conditions = [];
+                if (id === 250 && raw.vip < 1) conditions.push('需要 VIP 1+');
+                const slots = id === 250 ? 2 : 1;
+                if (raw.zizhi < 150 + slots) conditions.push('需要至少 ' + slots + ' 槽资质');
+                return name(id) + '（' + (conditions.join('、') || '不在当前人物可用脉池') + '）';
+            });
+            status('无法选择完整的金顶混组合，缺少' + reasons.join('、') + '。', true);
+            return;
+        }
+        invalidate(); assignments = new Map(preset.map(id => [id, -1])); renderTargets();
     });
     $('Clear').addEventListener('click', () => { invalidate(); assignments.clear(); renderTargets(); });
     $('Run').addEventListener('click', run);

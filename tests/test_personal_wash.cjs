@@ -142,6 +142,34 @@ async function checkAdditionalBranches() {
         assert(jobs[0].work>jobs[1].work && jobs[1].work===jobs[2].work);
     } finally {global.AutoWash2Optimizer=original;}
 }
+async function checkEarlyCandidateRefinement() {
+    const held = [271, 250];
+    const initial = {...raw, zizhi:154, talents:held.map(id => ({id}))};
+    const engine = new AutoWash2Engine.Engine(TALENT_DATA, initial);
+    const firstWash = engine.wash(engine.initialState(initial), [0, 1]);
+    const third = firstWash.state.talents.find(id => !held.includes(id) && engine.quality(id) === 4);
+    assert.ok(third);
+    const goals = [...held, third];
+    const ctx = PersonalWashSearch.context(input(initial, goals, [], 100, 154));
+    const first = {type:'wash', keep:held};
+    const early = PersonalWashSearch.route(ctx, [first, {type:'wash', keep:goals}], 'start-candidate');
+    const better = PersonalWashSearch.route(ctx, [first], 'searched');
+    const caps = [], winners = [];
+    const original = global.AutoWash2Optimizer;
+    try {
+        global.AutoWash2Optimizer = {...original, searchWashRoutes: async options => {
+            caps.push(options.options.maxTotalPills);
+            const count = caps.length - 1;
+            const result = {routes:[count ? better : early], searchScope:{expandedNodes:count, rawWashesSimulated:count}};
+            options.onCandidate(result);
+            return result;
+        }};
+        await PersonalWashTactical.search(ctx, null, route => winners.push(route), () => {}, async () => {});
+        assert.deepEqual(caps, [100, early.totalPills - 1]);
+        assert.deepEqual(winners.map(route => route.totalPills), [early.totalPills, better.totalPills]);
+        assert.match(winners[0].strategyLabel, /起步候选/);
+    } finally { global.AutoWash2Optimizer = original; }
+}
 async function main() {
     // 青龙白虎 raises 54 Con above the 60 required for 五蕴皆空.
     const thresholdRole = {ID:1, Type:1, Sex:1, Level:100, ZiZhi:154, BornCon:54, Talents:[]};
@@ -157,6 +185,7 @@ async function main() {
     checkConstructionReplay();
     checkSeedPlanner();
     await checkAdditionalBranches();
+    await checkEarlyCandidateRefinement();
     let checks = 0;
     const engine = new AutoWash2Engine.Engine(TALENT_DATA,raw);
     const carrier = engine.purpleIds.find(id=>!engine.isShenmai(id) &&
