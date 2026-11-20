@@ -1,19 +1,26 @@
 """App-owned, token-scoped loopback static server; no subprocess or disk payload."""
+import hashlib
 import http.server
 import json
 from pathlib import Path
 import secrets
+import sqlite3
+
+from .hengshan_journal import HengshanJournal
 import socketserver
 import threading
 from urllib.parse import unquote, urlsplit
 
 
 class LocalSite:
-    def __init__(self, root):
+    def __init__(self, root, journal_root=None):
         self.root = Path(root).resolve()
         self.token = secrets.token_urlsafe(24)
         self.prefix = '/' + self.token + '/'
         self.payload = b''
+        self.sequence_scope = self.sequence_owner = ''
+        self.sequence_journal_root = journal_root
+        self.sequence_journal = None
         self.theme = 'dark'
         self.lock = threading.Lock()
         site = self
@@ -68,6 +75,44 @@ class LocalSite:
                 except (BrokenPipeError, ConnectionResetError):
                     pass
 
+            def do_POST(self):
+                host = '127.0.0.1:' + str(self.server.server_port)
+                if self.headers.get('Host') != host or self.headers.get('Origin') != 'http://' + host:
+                    self.send_error(403)
+                    return
+                if self.path != site.prefix + 'api/hengshan-sequence' or site.sequence_journal_root is None:
+                    self.send_error(404)
+                    return
+                if self.headers.get_content_type() != 'application/json':
+                    self.send_error(415)
+                    return
+                try:
+                    size = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < size <= 2 * 1024 * 1024:
+                        raise ValueError('批次请求大小无效。')
+                    msg = json.loads(self.rfile.read(size))
+                    if not isinstance(msg, dict):
+                        raise ValueError('批次请求格式无效。')
+                    with site.lock:
+                        if site.sequence_journal is None:
+                            site.sequence_journal = HengshanJournal(site.sequence_journal_root)
+                        result = site.sequence_journal.run(site.sequence_scope, msg, site.sequence_owner)
+                    code = 200
+                except (ValueError, KeyError, TypeError) as exc:
+                    code, result = 400, dict(error=str(exc))
+                except (OSError, sqlite3.Error):
+                    code, result = 503, dict(error='无法读写本地断点，请检查可用空间后重试。')
+                body = json.dumps(result, ensure_ascii=False).encode('utf-8')
+                self.send_response(code)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
+                self.send_header('Cache-Control', 'no-store')
+                self.end_headers()
+                try:
+                    self.wfile.write(body)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
             def log_message(self, *args):
                 pass  # The random URL and save contents never enter access logs.
 
@@ -85,12 +130,15 @@ class LocalSite:
         self.origin = 'http://127.0.0.1:' + str(self.httpd.server_port)
         self.url = self.origin + self.prefix
 
-    def set_snapshot(self, data, platform='ios'):
+    def set_snapshot(self, data, platform='ios', sequence_owner=None):
         # Qt renders locally, with the same import channel as the existing web app.
         encoded = json.dumps(dict(data=data, platform=platform), ensure_ascii=True,
                              separators=(',', ':')).encode()
         with self.lock:
             self.payload = b'window.__latestPlainSave=' + encoded + b';\n'
+            owner = ('account:' + str(sequence_owner)).encode() if sequence_owner else b''
+            self.sequence_scope = hashlib.sha256(owner + encoded).hexdigest()
+            self.sequence_owner = hashlib.sha256(owner).hexdigest() if owner else self.sequence_scope
 
     def close(self):
         self.httpd.shutdown()
