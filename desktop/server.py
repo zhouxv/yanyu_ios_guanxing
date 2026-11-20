@@ -4,7 +4,9 @@ import http.server
 import json
 from pathlib import Path
 import secrets
+import shutil
 import sqlite3
+import tempfile
 
 from .hengshan_journal import HengshanJournal
 import socketserver
@@ -96,7 +98,26 @@ class LocalSite:
                     with site.lock:
                         if site.sequence_journal is None:
                             site.sequence_journal = HengshanJournal(site.sequence_journal_root)
-                        result = site.sequence_journal.run(site.sequence_scope, msg, site.sequence_owner)
+                        journal, scope, owner = site.sequence_journal, site.sequence_scope, site.sequence_owner
+                        if msg.get('op') != 'export':
+                            result = journal.run(scope, msg, owner)
+                    if msg.get('op') == 'export':
+                        # Compress outside the snapshot lock. Each request keeps its
+                        # original owner, and large batches spill to a temporary file.
+                        with tempfile.SpooledTemporaryFile(max_size=4*1024*1024) as archive:
+                            journal.export(scope, owner, msg, archive)
+                            size = archive.tell()
+                            archive.seek(0)
+                            self.send_response(200)
+                            self.send_header('Content-Type', 'application/zip')
+                            self.send_header('Content-Length', str(size))
+                            self.send_header('Cache-Control', 'no-store')
+                            self.end_headers()
+                            try:
+                                shutil.copyfileobj(archive, self.wfile)
+                            except (BrokenPipeError, ConnectionResetError):
+                                pass
+                        return
                     code = 200
                 except (ValueError, KeyError, TypeError) as exc:
                     code, result = 400, dict(error=str(exc))

@@ -4,32 +4,35 @@
     const C=HengshanSequence, el=id=>document.getElementById('sq'+id);
     const set=(id,text)=>{el(id).textContent=text;}, uiTick=()=>new Promise(r=>setTimeout(r,0));
     const node=(tag,text)=>{const q=document.createElement(tag);if(text!==undefined)q.textContent=text;return q;};
-    function button(text,fn){const b=node('button',text);b.type='button';b.onclick=()=>attempt(fn);return b;}
-    function check(text,value,fn,disabled=false){const l=node('label'),i=node('input');i.type='checkbox';i.checked=value;i.disabled=disabled;i.onchange=()=>attempt(()=>fn(i.checked));l.append(i,document.createTextNode(text));return l;}
+    function button(text,fn,cls='btn btn-wash-custom'){const b=node('button',text);b.type='button';b.className=cls;b.onclick=()=>attempt(fn);return b;}
+    function check(text,value,fn,disabled=false){const l=node('label'),i=node('input');l.className='as-check';i.type='checkbox';i.checked=value;i.disabled=disabled;i.onchange=()=>attempt(()=>fn(i.checked));l.append(i,document.createTextNode(text));return l;}
     const notice=(s,bad=false)=>{set('Notice',s);el('Notice').classList.toggle('is-error',bad);};
     async function attempt(fn){try{await fn();}catch(e){notice(e.message||String(e),true);}}
     const sha=async text=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),b=>b.toString(16).padStart(2,'0')).join('');
     let scope='', ctx, rule='', enrolled=[], shop=[], shopState=null, time=0, manual=[], entries=[], groups=[], saved=null, booting=null, ok=false;
     let calendar={first:'',last:'',furthest:'',canExtend:false}, manualDefault=true, dateBlocked=false;
     const selected=new Set(), draft=new Set(), marks=new Map(), routes=new Map(), starts=new Map();
-    let worker=null, cancelWorker=null, session=null, currentResult=0;
+    let worker=null, cancelWorker=null, session=null, currentResult=0, resultBrowser=null, poolDirty=false;
     const visibleSource=s=>s==='shop'||s==='shop-preview'?'shop':s==='backpack'?'backpack':'enrolled';
+    const sourceChoice=()=>el('Source').querySelector('input:checked').value;
+    const request=(op,args)=>fetch('../api/hengshan-sequence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op,scope,...args})});
     async function db(op,args={}){
-        const r=await fetch('../api/hengshan-sequence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op,scope,...args})});
+        const r=await request(op,args);
         if (!(r.headers.get('Content-Type')||'').includes('application/json')) throw Error('本地断点服务不可用，请从桌面版观星打开此页');
         const data=await r.json(); if(!r.ok) throw Error(data.error||'无法读写本地断点');return data;
     }
     function controls(){el('Setup').disabled=!ok||!!session;el('Start').disabled=!ok||!!session||dateBlocked;el('Resume').disabled=!ok||!!session||!saved;el('Import').disabled=!ok||!!session;el('Pause').disabled=!session||session.stopped;el('Stop').disabled=!session||session.stopped;el('Pause').textContent=session?.paused?'继续':'暂停';}
     function groupKey(ts){return C.stable(ts.slice().sort());}
     function addMark(m){const list=marks.get(m.task)||[];list.push(m);marks.set(m.task,list);}
-    function config(){return {days:manual.length,reconcile:el('Reconcile').checked,manual:manual.slice(),manualDefault,selected:[...selected],groups:C.clone(groups),budget:Number(el('Budget').value),cap:Number(el('Cap').value),from:el('From').value,to:el('To').value,source:el('Source').value};}
+    function config(){return {days:manual.length,reconcile:el('Reconcile').checked,manual:manual.slice(),manualDefault,selected:[...selected],groups:C.clone(groups),budget:Number(el('Budget').value),cap:Number(el('Cap').value),from:el('From').value,to:el('To').value,source:sourceChoice()};}
     function restore(c){
         groups=c?.groups ? c.groups.map(g=>({...g,targets:ctx.targets(g.targets)})) : C.presets.map(t=>({name:t.join(' · '),targets:t.slice(),on:true}));
         el('Budget').value=c?.budget??4;el('Cap').value=c?.cap??500000;el('Days').value=c?.days??30;
         el('Reconcile').checked=c?.reconcile===true;
         manualDefault=typeof c?.manualDefault==='boolean'?c.manualDefault:(c?.manual?.length?c.manual.some(Boolean):true);
         manual=Array.from({length:Number(el('Days').value)},(_,i)=>c?.manual?.[i]??manualDefault);
-        el('From').value=c?.from||'';el('To').value=c?.to||'';el('Source').value=c?.source||'all';
+        el('From').value=c?.from||'';el('To').value=c?.to||'';
+        const choices=[...el('Source').querySelectorAll('input')];(choices.find(o=>o.value===c?.source)||choices[0]).checked=true;
         selected.clear();(c?.selected||enrolled.filter(x=>x.s.source==='backpack').map(x=>x.key)).forEach(k=>selected.add(k));
         updateShop();renderGroups();renderTalents();
     }
@@ -50,6 +53,8 @@
             el(id).min=first;el(id).max=calendar.canExtend?calendar.furthest:calendar.last;
         }
         const old=new Map(entries.map(e=>[e.key,e]));entries=enrolled.concat(prediction);const keys=new Set(entries.map(e=>e.key));
+        const counts={all:entries.length,enrolled:0,backpack:0,shop:0};for(const e of entries)counts[visibleSource(e.s.source)]++;
+        for(const badge of el('Source').querySelectorAll('[data-count]'))badge.textContent=counts[badge.dataset.count];
         for(const k of selected)if(!keys.has(k))selected.delete(k);
         // If a refresh plan changes the actual candidate, do not retain a tick on a different person.
         for(const e of entries)if(selected.has(e.key)&&old.has(e.key)&&C.stable(old.get(e.key).s)!==C.stable(e.s))selected.delete(e.key);
@@ -58,7 +63,7 @@
         renderStudents();
     }
     function recruitRange(){
-        const source=el('Source').value;
+        const source=sourceChoice();
         if(source==='enrolled'||source==='backpack')return {applies:false,message:'在册和背包没有商店招募日。切回「全部」或「商店」，才会使用所填日期。'};
         const from=el('From').value,to=el('To').value,range={applies:true,from,to};
         const error=(message,days)=>({...range,invalid:true,message,days});
@@ -75,34 +80,37 @@
             const days=(Date.parse(end+'T00:00:00Z')-Date.parse(calendar.first+'T00:00:00Z'))/86400000+1;
             return error('当前预测只到 '+calendar.last+'。要包含 '+end+'，需从存档日起预测 '+days+' 天。',days);
         }
-        return {...range,message:'只显示 '+(from||calendar.first)+' 至 '+(to||calendar.last)+' 的商店弟子（含首尾）。'};
+        return {...range,message:'商店招募日：'+(from||calendar.first)+' 至 '+(to||calendar.last)+'（含首尾）。'+(source==='all'?'在册和背包仍会显示。':'')};
     }
     function filtered(range){
-        if(range.invalid)return [];
-        const source=el('Source').value,q=el('Find').value.trim();
-        return entries.filter(e=>(source==='all'||visibleSource(e.s.source)===source)&&
-            (!range.from||e.date&&e.date>=range.from)&&(!range.to||e.date&&e.date<=range.to)&&
-            (!q||[e.s.name,...ctx.held(e.s)].some(v=>v.includes(q))));
+        const source=sourceChoice(),q=el('Find').value.trim();
+        return entries.filter(e=>{
+            const kind=visibleSource(e.s.source);
+            if(source!=='all'&&source!==kind)return false;
+            if(kind==='shop'&&(range.invalid||(range.from&&(!e.date||e.date<range.from))||(range.to&&(!e.date||e.date>range.to))))return false;
+            return !q||[e.s.name,...ctx.held(e.s)].some(v=>v.includes(q));
+        });
     }
-    function countStudents(rows){
+    function blocksStart(range){return !!range.invalid&&(sourceChoice()==='shop'||entries.some(e=>visibleSource(e.s.source)==='shop'&&selected.has(e.key)));}
+    function countStudents(rows,range){
         const outside=selected.size-rows.filter(e=>selected.has(e.key)).length;
         set('Selected','当前显示 '+rows.length+' 名；共勾选 '+selected.size+' 名'+(outside?'（含筛选外 '+outside+' 名）':''));
+        dateBlocked=blocksStart(range);controls();
     }
     function renderStudents(){
         const range=recruitRange(),rows=filtered(range),list=el('Students'),frag=document.createDocumentFragment();
-        dateBlocked=!!range.invalid;
-        for(const id of ['From','To']){el(id).disabled=!range.applies;el(id).setAttribute('aria-invalid',String(dateBlocked));}
-        set('DateHint',range.message);el('DateHint').classList.toggle('is-error',dateBlocked);
+        for(const id of ['From','To']){el(id).disabled=!range.applies;el(id).setAttribute('aria-invalid',String(!!range.invalid));}
+        set('DateHint',range.message);el('DateHint').classList.toggle('is-error',!!range.invalid);
         el('Extend').hidden=!range.days;if(range.days)set('Extend','把预测延长到 '+range.days+' 天');
         for(const id of ['Only','All','None'])el(id).disabled=!rows.length;
         for(const e of rows){
             const kind=e.date?e.date+' · '+e.batch:e.batch;
             frag.append(check(kind+'　'+e.s.name+'　'+e.s.level+' 级　'+ctx.held(e.s).join('、')+(ctx.banned(e.s)?'（刻苦训练，搜索时跳过）':''),selected.has(e.key),v=>{
-                if(v)selected.add(e.key);else selected.delete(e.key);countStudents(rows);
+                if(v)selected.add(e.key);else selected.delete(e.key);countStudents(rows,range);
             }));
         }
-        list.replaceChildren(frag);if(!rows.length)list.textContent=dateBlocked?'请先调整上方日期。':'当前筛选没有弟子。';
-        countStudents(rows);controls();
+        list.replaceChildren(frag);if(!rows.length)list.textContent=range.invalid?'请调整商店招募日期。':'当前筛选没有弟子。';
+        countStudents(rows,range);
     }
     function selectResults(mode){
         const rows=filtered(recruitRange());if(!rows.length)return;
@@ -110,9 +118,9 @@
         for(const e of rows){if(mode==='remove')selected.delete(e.key);else selected.add(e.key);}
         renderStudents();
     }
-    function renderGroups(){const box=el('Groups');box.replaceChildren();for(const g of groups){const wrap=node('span');wrap.className='seq-group';wrap.append(check(g.name,g.on,v=>{g.on=v;}));wrap.title=g.targets.join('、');if(g.custom)wrap.append(button('移除',()=>{groups=groups.filter(a=>a!==g);renderGroups();}));box.append(wrap);}}
+    function renderGroups(){const box=el('Groups');box.replaceChildren();for(const g of groups){const wrap=node('span');wrap.className='seq-group';wrap.append(check(g.name,g.on,v=>{g.on=v;}));wrap.title=g.targets.join('、');if(g.custom)wrap.append(button('移除',()=>{groups=groups.filter(a=>a!==g);renderGroups();},'btn btn-reset'));box.append(wrap);}}
     function renderTalents(){const box=el('Talents'),q=el('TalentFind').value.trim();box.replaceChildren();const known=new Set();
-        for (const cat of HengshanAutoSimCore.CATEGORIES) {const div=node('div');div.className='seq-row';const items=[];for(const id of cat.ids){const n=ctx.name(id);if(n===C.BAN||known.has(n)||!n.includes(q))continue;known.add(n);const b=button(n,()=>{if(draft.has(n))draft.delete(n);else if(draft.size<3)draft.add(n);else throw Error('一组最多三个天赋，请先取消一项');renderTalents();});b.setAttribute('aria-pressed',String(draft.has(n)));items.push(b);}if(items.length){div.append(node('strong',cat.name),...items);box.append(div);}}
+        for (const cat of HengshanAutoSimCore.CATEGORIES) {const div=node('div');div.className='seq-talent-category';const items=[];for(const id of cat.ids){const n=ctx.name(id);if(n===C.BAN||known.has(n)||!n.includes(q))continue;known.add(n);const b=button(n,()=>{if(draft.has(n))draft.delete(n);else if(draft.size<3)draft.add(n);else throw Error('一组最多三个天赋，请先取消一项');renderTalents();},'as-talent');b.setAttribute('aria-pressed',String(draft.has(n)));items.push(b);}if(items.length){const grid=node('div');grid.className='as-talent-grid';grid.append(...items);div.append(node('h4',cat.name),grid);box.append(div);}}
         set('Draft',draft.size+'/3　'+[...draft].join('、'));el('AddGroup').disabled=draft.size!==3;
     }
     function addGroup(){const targets=ctx.targets([...draft]);if(groups.some(g=>groupKey(g.targets)===groupKey(targets)))throw Error('已有同一组三天赋');groups.push({name:el('GroupName').value.trim()||targets.join(' · '),targets,on:true,custom:true});draft.clear();el('GroupName').value='';renderGroups();renderTalents();}
@@ -121,11 +129,18 @@
         const data=await db('open');scope=data.scope;saved=data.config;
         rule=C.RULE+':'+await sha(HENGSHAN_ENGINE_WASM_B64+C.stable(HENGSHAN_TALENT_DATA));
         for(const m of data.marks)addMark(m);for(const r of data.routes)routes.set(r.task,r);
+        readRoster();restore(saved);renderResults();ok=true;controls();notice(entries.length?'已读取存档。勾选在册、背包或商店弟子即可开始配置。':'当前存档没有可推演的弟子。');
+    }
+    function readRoster(){
+        poolDirty=false;
         const all=HengshanPageState.getSimulationStudents();enrolled=all.filter(s=>visibleSource(s.source)!=='shop').map(s=>({key:String(s.key),s,date:'',batch:s.source==='backpack'?'背包':'在册'}));
         shop=HengshanShopView.getCurrentCandidates().filter(s=>visibleSource(s.source)==='shop');shopState=HengshanShopView.getShopState();time=Number((shop.find(s=>s.currentTime)||all.find(s=>s.currentTime)||{}).currentTime)||0;
-        restore(saved);renderResults();ok=true;controls();notice(entries.length?'已读取存档。选择弟子和方案即可推演；完成一项就保存一项。':'当前存档没有可推演的弟子。');
     }
-    function enter(){if(document.documentElement.dataset.hengshanView==='sequence'&&!booting)booting=boot().catch(e=>{booting=null;notice(e.message,true);});}
+    function enter(){
+        if(document.documentElement.dataset.hengshanView!=='sequence')return;
+        if(!booting)booting=boot().catch(e=>{booting=null;notice(e.message,true);});
+        else if(ok&&poolDirty&&!session)attempt(()=>{readRoster();updateShop();});
+    }
     async function startOf(e){let item=starts.get(e.key);if(!item){const initial=HengshanPageState.prepareSnapshot(e.s);item={initial,fingerprint:await sha(C.stable(initial))};starts.set(e.key,item);}return item;}
     async function taskId(e,start,targets){return sha(C.stable([rule,e.date,start.fingerprint,targets.slice().sort()]));}
     function counts(sess){const n=sess.count;set('Counts',`总计 ${n.total} 项，待处理 ${n.total-n.done} 项；新成功 ${n.found}，复用成功 ${n.reused}，预算内无解 ${n.exhausted}，达到上限 ${n.limited}，刻苦训练跳过 ${n.banned}。`);}
@@ -152,7 +167,7 @@
     function done(s,status){s.count[status]++;s.count.done++;counts(s);}
     async function run(resume){
         if(session||!ok)return;if(resume){if(!saved)throw Error('还没有可继续的批次');const higher=Number(el('Cap').value);restore(saved);el('Cap').value=Math.max(Number(saved.cap),higher||0);}
-        if(!resume){const range=recruitRange();if(range.invalid)throw Error(range.message);}
+        if(!resume){const range=recruitRange();if(blocksStart(range))throw Error(range.message);}
         const cfg=config(), gs=cfg.groups.filter(g=>g.on), es=entries.filter(e=>selected.has(e.key));
         if(!es.length||!gs.length)throw Error('请至少勾选一名弟子和一个天赋组');
         C.integer(cfg.budget,0,100,'洗练次数');C.integer(cfg.cap,1,100000000,'状态上限');gs.forEach(g=>ctx.targets(g.targets));
@@ -174,11 +189,14 @@
             }
             set('Progress','本批次已完成。达到上限的项目可调高状态上限后点「继续上次批次」。');
         }catch(e){set('Progress',s.stopped?'已停止，已完成项已保存；继续时从未完成项重跑。':'批次中断：'+e.message+'。已完成项已保存。');if(!s.stopped)throw e;}
-        finally{worker?.terminate();worker=null;HengshanSequenceVerify.close();session=null;controls();}
+        finally{worker?.terminate();worker=null;HengshanSequenceVerify.close();session=null;controls();enter();}
     }
-    function renderResults(){const q=el('ResultsFind').value.trim(),box=el('Results'),all=[...routes.values()].filter(r=>r.rule===rule), rs=all.filter(r=>[r.date,r.name,r.groupName,...r.targets].some(x=>x?.includes(q)));
-        rs.sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name,'zh-CN')||a.groupName.localeCompare(b.groupName,'zh-CN'));
-        const frag=document.createDocumentFragment();for(const r of rs){const b=button(`${sourceLabel(r)}　${r.name}　${r.groupName}　· ${r.washes} 次洗练 / ${r.days} 天`,()=>showRoute(r.task));b.className='seq-result';frag.append(b);}box.replaceChildren(frag);if(!rs.length)box.textContent=q?'没有匹配的路线。':'尚无已复验路线。';set('ResultCount',`${rs.length} / ${all.length} 条`);
+    function renderResults(){resultBrowser.update([...routes.values()].filter(r=>r.rule===rule));}
+    async function exportRoutes(tasks){
+        const resp=await request('export',{tasks,rule});
+        if(!resp.ok){const data=await resp.json().catch(()=>({}));throw Error(data.error||'无法生成路线包');}
+        if(!(resp.headers.get('Content-Type')||'').startsWith('application/zip'))throw Error('未收到路线包，请重新打开桌面版');
+        saveFile('恒山弟子路线_'+tasks.length+'条.zip',await resp.blob());
     }
     function lines(r){return r.steps.map(s=>s.type==='day'?`成长 ${s.days} 天：${s.from} → ${s.to} 级`:`第 ${s.day} 天 · ${s.level} 级，洗第 ${s.slot+1} 槽：${s.old} → ${s.drawn}`);}
     function download(r,ext,blob){saveFile(`${r.date||r.batch}_${r.name}_${r.targets.join(' ')}_路线.${ext}`.replace(/[<>:"/\\|?*]/g,'_'),blob);}
@@ -187,25 +205,38 @@
     function routeImage(r,head,body){const canvas=node('canvas');canvas.width=960;const g=canvas.getContext('2d'),font='18px "Microsoft YaHei",sans-serif';g.font=font;const wrapped=[];for(const line of [...head.slice(1),...body]){let text='';for(const char of line){if(text&&g.measureText(text+char).width>900){wrapped.push(text);text='';}text+=char;}wrapped.push(text);}canvas.height=105+32*wrapped.length;g.fillStyle='#152131';g.fillRect(0,0,canvas.width,canvas.height);g.fillStyle='#f1d490';g.font='bold 25px "Microsoft YaHei",sans-serif';g.fillText(head[0],24,40,910);g.font=font;g.fillStyle='#ebf1f8';wrapped.forEach((line,i)=>g.fillText(line,24,80+32*i));canvas.toBlob(blob=>{if(blob)download(r,'png',blob);else notice('路线图过长，请导出文字或 JSON',true);},'image/png');}
     async function showRoute(task){const id=++currentResult,r=await db('route',{task});if(id!==currentResult)return;const box=el('Route'), h=[`${r.name} · ${sourceLabel(r)}`,`目标：${r.targets.join('、')}`,`完成于 ${r.level} 级 · 洗练 ${r.washes} 次 · 推进 ${r.days} 天`,`最终天赋：${r.finalTalents.join('、')}`], steps=lines(r);
         if(r.shopPlan?.from)h.push('从 '+r.shopPlan.from+' 起，招募前需手动刷新的日期：'+(dateRanges(r.shopPlan.manualDates)||'无')+(r.shopPlan.alreadyRefreshed?'（存档当日已刷新）':'')+(r.shopPlan.reconcile?'；起点按补算一次今日自动刷新推演，请以游戏名单核对。':''));
-        box.hidden=false;box.replaceChildren(node('h3',h[0]),...h.slice(1).map(s=>node('p',s)));const ol=node('ol');for(const line of steps)ol.append(node('li',line));box.append(steps.length?ol:node('p','起点已满足，无需操作。'));
+        box.hidden=false;box.replaceChildren(node('h3',h[0]),...h.slice(1).map(s=>node('p',s)));const ol=node('ol');ol.className='as-plan-list';for(const line of steps)ol.append(node('li',line));box.append(steps.length?ol:node('p','起点已满足，无需操作。'));
         const bar=node('div');bar.className='seq-row';bar.append(button('导出路线文字',()=>download(r,'txt',new Blob([[...h,...steps].join('\r\n')],{type:'text/plain;charset=utf-8'}))),button('导出路线图',()=>routeImage(r,h,steps)),button('导出路线 JSON',()=>download(r,'json',new Blob([JSON.stringify(r,null,2)],{type:'application/json'}))));box.append(bar);box.scrollIntoView({block:'nearest'});
     }
     function comparable(s){const v={...s};delete v.key;delete v.source;delete v.path;return C.stable(v);}
+    async function importedStart(candidates, initial){
+        const signature=comparable(initial), matches=[];
+        for(const entry of candidates){
+            const start=await startOf(entry);
+            if(comparable(start.initial)!==signature)continue;
+            const candidate={entry,start};
+            if(initial.key!=null && String(start.initial.key)===String(initial.key) &&
+                (!initial.source || initial.source===start.initial.source))return candidate;
+            matches.push(candidate);
+        }
+        return matches.length===1?matches[0]:{ambiguous:matches.length>1};
+    }
     async function importOld(fileList){
         if(session||!ok)return;const files=Array.from(fileList).filter(f=>f.name==='路线.json'||f.name.endsWith('_路线.json'));if(!files.length)throw Error('此文件夹没有找到路线 JSON');
         const s={paused:false,stopped:false}, byName=new Map();for(const e of entries){const k=C.stable([e.date,e.s.name]);if(!byName.has(k))byName.set(k,[]);byName.get(k).push(e);}
-        session=s;controls();let added=0,existing=0,unmatched=0,invalid=0,first='';
+        session=s;controls();let added=0,existing=0,unmatched=0,ambiguous=0,invalid=0,first='';
         try{for(let i=0;i<files.length;i++){
             await gate(s);set('Progress',`核对旧路线 ${i+1}/${files.length} · 新增 ${added} · 已有 ${existing} · 起点不匹配 ${unmatched} · 无效 ${invalid}`);
             let old,goal,moves;
             try{if(files[i].size>2*1024*1024)throw Error('文件过大');old=JSON.parse(await files[i].text());if(old.verified!==true||!old.initial||!old.final)throw Error('不是已复验路线');goal=ctx.targets(old.targets);moves=old.moves||old.rawRoute.map(a=>{if(a.type==='day')return C.DAY;if(a.type!=='wash')throw Error('未知操作');return a.slot;});if(!Array.isArray(moves)||moves.length>20100||moves.filter(m=>m!==C.DAY).length>100)throw Error('操作数无效');}catch(e){invalid++;first ||= e.message;continue;}
-            const opts=byName.get(C.stable([old.date||old.shopPlan?.date||'',old.name]))||[];let match=null,start=null;
-            for(const e of opts){const a=await startOf(e);if(comparable(a.initial)===comparable(old.initial)){match=e;start=a;break;}}
-            if(!match){unmatched++;continue;}const task=await taskId(match,start,goal),prior=routes.get(task),washes=moves.filter(m=>m!==C.DAY).length;
+            const opts=byName.get(C.stable([old.date||old.shopPlan?.date||'',old.name]))||[];
+            const found=await importedStart(opts,old.initial), match=found.entry,start=found.start;
+            if(!match){unmatched++;if(found.ambiguous)ambiguous++;continue;}
+            const task=await taskId(match,start,goal),prior=routes.get(task),washes=moves.filter(m=>m!==C.DAY).length;
             if(prior&&prior.washes<=washes){existing++;continue;}
             let final;try{final=ctx.replay(start.initial,moves,goal).final;if(comparable(final)!==comparable(old.final))throw Error('旧路线最终状态不一致');}catch(e){invalid++;first ||= e.message;continue;}
             await saveRoute(s,match,{name:old.groupName||goal.join(' · '),targets:goal},task,start.initial,moves,final);added++;
-        }}finally{set('Progress',`${s.stopped?'导入已停止':'本次核对'}：新增 ${added}，已有 ${existing}，起点不匹配 ${unmatched}，无效 ${invalid}。${first?'首条无效原因：'+first:''}`);HengshanSequenceVerify.close();session=null;controls();renderResults();el('Files').value='';}
+        }}finally{set('Progress',`${s.stopped?'导入已停止':'本次核对'}：新增 ${added}，已有 ${existing}，起点不匹配 ${unmatched}，无效 ${invalid}。${ambiguous?'其中 '+ambiguous+' 条同名且起点相同，缺少可区分弟子的标识。':''}${first?'首条无效原因：'+first:''}`);HengshanSequenceVerify.close();session=null;controls();renderResults();el('Files').value='';enter();}
     }
     async function loadConfig(file){
         if(!file)return;if(file.size>2*1024*1024)throw Error('配置过大');const pack=JSON.parse((await file.text()).replace(/^\uFEFF/,'')),c=pack.config;
@@ -216,15 +247,18 @@
         const same=pack.scope===scope;restore({...c,selected:same?c.selected:[]});notice(same?'已载入配置。开始推演后才会更新本机批次断点。':'已载入其他存档的天赋组、预算和刷新计划，请重新勾选本存档的弟子。');
     }
     function bind(){
+        resultBrowser=createHengshanResultBrowser({openRoute:showRoute,exportRoutes,onError:e=>notice(e.message,true),
+            closeRoute(){currentResult++;el('Route').hidden=true;el('Route').replaceChildren();}});
         for(const id of ['Find','Source','From','To'])el(id).addEventListener(id==='Find'?'input':'change',()=>attempt(renderStudents));
         el('Only').onclick=()=>selectResults('only');el('All').onclick=()=>selectResults('add');el('None').onclick=()=>selectResults('remove');
         el('ClearDates').onclick=()=>{el('From').value='';el('To').value='';renderStudents();};
         el('Extend').onclick=()=>attempt(()=>{const {days}=recruitRange();if(days){el('Days').value=days;updateShop();}});
         el('Days').onchange=el('Reconcile').onchange=()=>attempt(updateShop);for(const [id,value] of [['ManualAll',true],['ManualNone',false]])el(id).onclick=()=>attempt(()=>{manual=Array(C.integer(Number(el('Days').value),1,120,'预测天数')).fill(value);manualDefault=value;updateShop();});
         el('TalentFind').oninput=()=>attempt(renderTalents);el('AddGroup').onclick=()=>attempt(addGroup);el('Start').onclick=()=>attempt(()=>run(false));el('Resume').onclick=()=>attempt(()=>run(true));el('Pause').onclick=togglePause;el('Stop').onclick=stop;
-        el('ResultsFind').oninput=()=>attempt(renderResults);el('Import').onclick=()=>el('Files').click();el('Files').onchange=e=>attempt(()=>importOld(e.target.files));
+        el('Import').onclick=()=>el('Files').click();el('Files').onchange=e=>attempt(()=>importOld(e.target.files));
         el('CfgOut').onclick=()=>attempt(()=>saveFile('恒山弟子批量配置.json',new Blob([JSON.stringify({format:'恒山弟子洗髓序列-v1',scope,config:config()},null,2)],{type:'application/json'})));
         el('CfgIn').onclick=()=>el('CfgFile').click();el('CfgFile').onchange=()=>attempt(async()=>{try{await loadConfig(el('CfgFile').files[0]);}finally{el('CfgFile').value='';}});
+        window.addEventListener('hengshan-student-pool-changed',()=>{poolDirty=true;enter();});
         window.addEventListener('yyjh:feature-change',enter);enter();
     }
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();
