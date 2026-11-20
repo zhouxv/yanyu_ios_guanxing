@@ -10,6 +10,7 @@
     async function attempt(fn){try{await fn();}catch(e){notice(e.message||String(e),true);}}
     const sha=async text=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),b=>b.toString(16).padStart(2,'0')).join('');
     let scope='', ctx, rule='', enrolled=[], shop=[], shopState=null, time=0, manual=[], entries=[], groups=[], saved=null, booting=null, ok=false;
+    let calendar={first:'',last:'',furthest:'',canExtend:false}, manualDefault=true, dateBlocked=false;
     const selected=new Set(), draft=new Set(), marks=new Map(), routes=new Map(), starts=new Map();
     let worker=null, cancelWorker=null, session=null, currentResult=0;
     const visibleSource=s=>s==='shop'||s==='shop-preview'?'shop':s==='backpack'?'backpack':'enrolled';
@@ -18,26 +19,36 @@
         if (!(r.headers.get('Content-Type')||'').includes('application/json')) throw Error('本地断点服务不可用，请从桌面版观星打开此页');
         const data=await r.json(); if(!r.ok) throw Error(data.error||'无法读写本地断点');return data;
     }
-    function controls(){el('Setup').disabled=!ok||!!session;el('Start').disabled=!ok||!!session;el('Resume').disabled=!ok||!!session||!saved;el('Import').disabled=!ok||!!session;el('Pause').disabled=!session||session.stopped;el('Stop').disabled=!session||session.stopped;el('Pause').textContent=session?.paused?'继续':'暂停';}
+    function controls(){el('Setup').disabled=!ok||!!session;el('Start').disabled=!ok||!!session||dateBlocked;el('Resume').disabled=!ok||!!session||!saved;el('Import').disabled=!ok||!!session;el('Pause').disabled=!session||session.stopped;el('Stop').disabled=!session||session.stopped;el('Pause').textContent=session?.paused?'继续':'暂停';}
     function groupKey(ts){return C.stable(ts.slice().sort());}
     function addMark(m){const list=marks.get(m.task)||[];list.push(m);marks.set(m.task,list);}
-    function config(){return {days:manual.length,reconcile:el('Reconcile').checked,manual:manual.slice(),selected:[...selected],groups:C.clone(groups),budget:Number(el('Budget').value),cap:Number(el('Cap').value),from:el('From').value,to:el('To').value,source:el('Source').value};}
+    function config(){return {days:manual.length,reconcile:el('Reconcile').checked,manual:manual.slice(),manualDefault,selected:[...selected],groups:C.clone(groups),budget:Number(el('Budget').value),cap:Number(el('Cap').value),from:el('From').value,to:el('To').value,source:el('Source').value};}
     function restore(c){
         groups=c?.groups ? c.groups.map(g=>({...g,targets:ctx.targets(g.targets)})) : C.presets.map(t=>({name:t.join(' · '),targets:t.slice(),on:true}));
         el('Budget').value=c?.budget??4;el('Cap').value=c?.cap??500000;el('Days').value=c?.days??30;
         el('Reconcile').checked=c?.reconcile===true;
-        manual=Array.from({length:Number(el('Days').value)},(_,i)=>c?.manual?.[i]??true);
+        manualDefault=typeof c?.manualDefault==='boolean'?c.manualDefault:(c?.manual?.length?c.manual.some(Boolean):true);
+        manual=Array.from({length:Number(el('Days').value)},(_,i)=>c?.manual?.[i]??manualDefault);
         el('From').value=c?.from||'';el('To').value=c?.to||'';el('Source').value=c?.source||'all';
         selected.clear();(c?.selected||enrolled.filter(x=>x.s.source==='backpack').map(x=>x.key)).forEach(k=>selected.add(k));
         updateShop();renderGroups();renderTalents();
     }
     function updateShop(){
-        const n=C.integer(Number(el('Days').value),1,120,'预测天数');manual=Array.from({length:n},(_,i)=>manual[i]??true);
+        const n=C.integer(Number(el('Days').value),1,120,'预测天数');manual=Array.from({length:n},(_,i)=>manual[i]??manualDefault);
         const reconcile=el('Reconcile').checked, used=!reconcile&&shopState?.refreshes>=1;
         if(used)manual[0]=false;
         let prediction=[], reason='';
         try{prediction=C.shopPlan(HengshanStudentEngine,HENGSHAN_TALENT_DATA,HENGSHAN_SHOP_DATA,shop,shopState,time,n,manual,reconcile);}
         catch(e){reason=e.message+'；仅显示存档里的弟子。';prediction=shop.map(s=>({s,key:String(s.key),date:time?C.shopDate(time):'',batch:'当前商店'}));}
+        const first=time>0?C.shopDate(time):'';
+        calendar={first,last:reason?(prediction.length?first:''):C.shopDate(time,n-1),
+            furthest:first?C.shopDate(time,119):'',canExtend:!reason};
+        const coverage=!reason?'可筛招募日：'+first+' 至 '+calendar.last+'（含存档当日，共 '+n+' 天）。':
+            (calendar.last?'仅可查看 '+first+' 的当前商店。':'暂无可筛选的商店日期。');
+        set('Coverage',(first?'存档游戏日：'+first+'。':'未读到存档游戏日。')+coverage);
+        for(const id of ['From','To']){
+            el(id).min=first;el(id).max=calendar.canExtend?calendar.furthest:calendar.last;
+        }
         const old=new Map(entries.map(e=>[e.key,e]));entries=enrolled.concat(prediction);const keys=new Set(entries.map(e=>e.key));
         for(const k of selected)if(!keys.has(k))selected.delete(k);
         // If a refresh plan changes the actual candidate, do not retain a tick on a different person.
@@ -46,13 +57,59 @@
         else for(let i=0;i<n;i++)ul.append(check(C.shopDate(time,i)+(i===0&&used?'（已刷新）':''),manual[i],v=>{manual[i]=v;updateShop();},i===0&&used));
         renderStudents();
     }
-    function filtered(){const source=el('Source').value,q=el('Find').value.trim(),from=el('From').value,to=el('To').value;
-        return entries.filter(e=>(source==='all'||visibleSource(e.s.source)===source)&&(!from||e.date&&e.date>=from)&&(!to||e.date&&e.date<=to)&&(!q||[e.s.name,...ctx.held(e.s)].some(v=>v.includes(q))));}
-    function countStudents(){set('Selected','已选 '+selected.size+' 名 / 筛选出 '+filtered().length+' 名');}
-    function renderStudents(){const list=el('Students'),frag=document.createDocumentFragment();for(const e of filtered()){
-        const kind=e.date?e.date+' · '+e.batch:(e.s.source==='backpack'?'背包':'在册');
-        const line=check(kind+'　'+e.s.name+'　'+e.s.level+' 级　'+ctx.held(e.s).join('、')+(ctx.banned(e.s)?'（刻苦训练，搜索时跳过）':''),selected.has(e.key),v=>{if(v)selected.add(e.key);else selected.delete(e.key);countStudents();});frag.append(line);
-    }list.replaceChildren(frag);if(!list.childNodes.length)list.textContent='当前筛选没有弟子。';countStudents();}
+    function recruitRange(){
+        const source=el('Source').value;
+        if(source==='enrolled'||source==='backpack')return {applies:false,message:'在册和背包没有商店招募日。切回「全部」或「商店」，才会使用所填日期。'};
+        const from=el('From').value,to=el('To').value,range={applies:true,from,to};
+        const error=(message,days)=>({...range,invalid:true,message,days});
+        if(['From','To'].some(id=>el(id).validity.badInput))return error('请填完日期的年、月、日，或点「清空日期」。');
+        if(!from&&!to)return {...range,message:'两栏留空可看全部；只填开始日表示从这天起，只填结束日表示截至这天。'};
+        if([from,to].some(d=>d&&d.length!==10))return error('请填写四位年份的招募日期。');
+        if(from&&to&&from>to)return error('招募开始日晚于结束日，请调整起止日期。');
+        if(!calendar.last)return error('当前存档没有可筛选的商店日期。请清空日期或更换存档。');
+        if((from&&from<calendar.first)||(to&&to<calendar.first))return error('日期早于存档游戏日 '+calendar.first+'。请改用更早的存档，或调整招募日期。');
+        const end=to||from;
+        if(end>calendar.last){
+            if(!calendar.canExtend)return error('当前只能查看 '+calendar.first+' 的存档商店，无法预测之后的日期。');
+            if(end>calendar.furthest)return error('这份存档最多预测 120 天，最远到 '+calendar.furthest+'。请缩短区间，或改用更晚的存档。');
+            const days=(Date.parse(end+'T00:00:00Z')-Date.parse(calendar.first+'T00:00:00Z'))/86400000+1;
+            return error('当前预测只到 '+calendar.last+'。要包含 '+end+'，需从存档日起预测 '+days+' 天。',days);
+        }
+        return {...range,message:'只显示 '+(from||calendar.first)+' 至 '+(to||calendar.last)+' 的商店弟子（含首尾）。'};
+    }
+    function filtered(range){
+        if(range.invalid)return [];
+        const source=el('Source').value,q=el('Find').value.trim();
+        return entries.filter(e=>(source==='all'||visibleSource(e.s.source)===source)&&
+            (!range.from||e.date&&e.date>=range.from)&&(!range.to||e.date&&e.date<=range.to)&&
+            (!q||[e.s.name,...ctx.held(e.s)].some(v=>v.includes(q))));
+    }
+    function countStudents(rows){
+        const outside=selected.size-rows.filter(e=>selected.has(e.key)).length;
+        set('Selected','当前显示 '+rows.length+' 名；共勾选 '+selected.size+' 名'+(outside?'（含筛选外 '+outside+' 名）':''));
+    }
+    function renderStudents(){
+        const range=recruitRange(),rows=filtered(range),list=el('Students'),frag=document.createDocumentFragment();
+        dateBlocked=!!range.invalid;
+        for(const id of ['From','To']){el(id).disabled=!range.applies;el(id).setAttribute('aria-invalid',String(dateBlocked));}
+        set('DateHint',range.message);el('DateHint').classList.toggle('is-error',dateBlocked);
+        el('Extend').hidden=!range.days;if(range.days)set('Extend','把预测延长到 '+range.days+' 天');
+        for(const id of ['Only','All','None'])el(id).disabled=!rows.length;
+        for(const e of rows){
+            const kind=e.date?e.date+' · '+e.batch:e.batch;
+            frag.append(check(kind+'　'+e.s.name+'　'+e.s.level+' 级　'+ctx.held(e.s).join('、')+(ctx.banned(e.s)?'（刻苦训练，搜索时跳过）':''),selected.has(e.key),v=>{
+                if(v)selected.add(e.key);else selected.delete(e.key);countStudents(rows);
+            }));
+        }
+        list.replaceChildren(frag);if(!rows.length)list.textContent=dateBlocked?'请先调整上方日期。':'当前筛选没有弟子。';
+        countStudents(rows);controls();
+    }
+    function selectResults(mode){
+        const rows=filtered(recruitRange());if(!rows.length)return;
+        if(mode==='only')selected.clear();
+        for(const e of rows){if(mode==='remove')selected.delete(e.key);else selected.add(e.key);}
+        renderStudents();
+    }
     function renderGroups(){const box=el('Groups');box.replaceChildren();for(const g of groups){const wrap=node('span');wrap.className='seq-group';wrap.append(check(g.name,g.on,v=>{g.on=v;}));wrap.title=g.targets.join('、');if(g.custom)wrap.append(button('移除',()=>{groups=groups.filter(a=>a!==g);renderGroups();}));box.append(wrap);}}
     function renderTalents(){const box=el('Talents'),q=el('TalentFind').value.trim();box.replaceChildren();const known=new Set();
         for (const cat of HengshanAutoSimCore.CATEGORIES) {const div=node('div');div.className='seq-row';const items=[];for(const id of cat.ids){const n=ctx.name(id);if(n===C.BAN||known.has(n)||!n.includes(q))continue;known.add(n);const b=button(n,()=>{if(draft.has(n))draft.delete(n);else if(draft.size<3)draft.add(n);else throw Error('一组最多三个天赋，请先取消一项');renderTalents();});b.setAttribute('aria-pressed',String(draft.has(n)));items.push(b);}if(items.length){div.append(node('strong',cat.name),...items);box.append(div);}}
@@ -95,6 +152,7 @@
     function done(s,status){s.count[status]++;s.count.done++;counts(s);}
     async function run(resume){
         if(session||!ok)return;if(resume){if(!saved)throw Error('还没有可继续的批次');const higher=Number(el('Cap').value);restore(saved);el('Cap').value=Math.max(Number(saved.cap),higher||0);}
+        if(!resume){const range=recruitRange();if(range.invalid)throw Error(range.message);}
         const cfg=config(), gs=cfg.groups.filter(g=>g.on), es=entries.filter(e=>selected.has(e.key));
         if(!es.length||!gs.length)throw Error('请至少勾选一名弟子和一个天赋组');
         C.integer(cfg.budget,0,100,'洗练次数');C.integer(cfg.cap,1,100000000,'状态上限');gs.forEach(g=>ctx.targets(g.targets));
@@ -159,8 +217,10 @@
     }
     function bind(){
         for(const id of ['Find','Source','From','To'])el(id).addEventListener(id==='Find'?'input':'change',()=>attempt(renderStudents));
-        el('All').onclick=()=>{filtered().forEach(e=>selected.add(e.key));renderStudents();};el('None').onclick=()=>{filtered().forEach(e=>selected.delete(e.key));renderStudents();};
-        el('Days').onchange=el('Reconcile').onchange=()=>attempt(updateShop);for(const [id,value] of [['ManualAll',true],['ManualNone',false]])el(id).onclick=()=>attempt(()=>{manual=Array(C.integer(Number(el('Days').value),1,120,'预测天数')).fill(value);updateShop();});
+        el('Only').onclick=()=>selectResults('only');el('All').onclick=()=>selectResults('add');el('None').onclick=()=>selectResults('remove');
+        el('ClearDates').onclick=()=>{el('From').value='';el('To').value='';renderStudents();};
+        el('Extend').onclick=()=>attempt(()=>{const {days}=recruitRange();if(days){el('Days').value=days;updateShop();}});
+        el('Days').onchange=el('Reconcile').onchange=()=>attempt(updateShop);for(const [id,value] of [['ManualAll',true],['ManualNone',false]])el(id).onclick=()=>attempt(()=>{manual=Array(C.integer(Number(el('Days').value),1,120,'预测天数')).fill(value);manualDefault=value;updateShop();});
         el('TalentFind').oninput=()=>attempt(renderTalents);el('AddGroup').onclick=()=>attempt(addGroup);el('Start').onclick=()=>attempt(()=>run(false));el('Resume').onclick=()=>attempt(()=>run(true));el('Pause').onclick=togglePause;el('Stop').onclick=stop;
         el('ResultsFind').oninput=()=>attempt(renderResults);el('Import').onclick=()=>el('Files').click();el('Files').onchange=e=>attempt(()=>importOld(e.target.files));
         el('CfgOut').onclick=()=>attempt(()=>saveFile('恒山弟子批量配置.json',new Blob([JSON.stringify({format:'恒山弟子洗髓序列-v1',scope,config:config()},null,2)],{type:'application/json'})));

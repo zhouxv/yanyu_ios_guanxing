@@ -198,7 +198,16 @@
             <div class="hengshan-view seq" data-hengshan-view="sequence" hidden>
                 <section class="config-panel">
                     <div class="panel-header"><h2>弟子洗髓序列（自用）</h2></div>
-                    <p>勾选弟子和三天赋方案，按洗练次数从少到多搜索。一天一天成长到 100 级，途中可以换任意已开槽位；排除「刻苦训练」。命中后按手动推演的操作逐步复验。</p>
+                    <div class="seq-date-guide" aria-labelledby="sqDateGuide">
+                        <h3 id="sqDateGuide">怎样只推演某几天的商店弟子？</h3>
+                        <p id="sqCoverage" aria-live="polite">导入存档后，这里会显示可预测的招募日期。</p>
+                        <ol>
+                            <li><strong>定天数。</strong>展开下方「商店预测与逐日刷新计划」。存档的游戏日算第 1 天（北京时间 05:00 换日），默认预测 30 天，最多 120 天。</li>
+                            <li><strong>定刷新。</strong>新配置默认每天手动刷新一次。游戏里不手刷就点「每天只自动刷新」，也可逐日勾选。改一天的刷新计划会影响后面的候选。</li>
+                            <li><strong>选名单。</strong>来源选「商店」，填招募起止日（含首尾），点「只选当前结果」，再选天赋组开始推演。只看一天，两栏都填那一天；要保留其他已选弟子，点「追加当前结果」。</li>
+                        </ol>
+                    </div>
+                    <p>招募日期只筛候选，不限制弟子招募后的培养天数。推演会按洗练次数从少到多搜索，逐日成长至 100 级，排除「刻苦训练」；命中三个目标天赋后再逐步复验。</p>
                     <p id="sqNotice" class="hengshan-message" role="status">正在读取存档…</p>
                 </section>
                 <fieldset id="sqSetup" disabled>
@@ -207,10 +216,14 @@
                             <label>预测天数 <input id="sqDays" type="number" min="1" max="120" value="30"></label>
                             <label><input id="sqReconcile" type="checkbox"> 存档仍显示昨天的名单，先补算一次今日自动刷新</label>
                             <button id="sqManualAll" type="button">每天手动刷新</button><button id="sqManualNone" type="button">每天只自动刷新</button>
-                        </div><div id="sqManualDays" class="seq-check-grid"></div><p>存档游戏日为第 1 天（北京时间 05:00 换日）。今天只列剩余候选；勾选的日子再手动刷新一次，会改变后续名单。未来候选是预测。</p></details>
+                        </div><div id="sqManualDays" class="seq-check-grid"></div><p>存档当天先列剩余候选；当天的手动刷新若已用完，就不能再勾选。只有确认游戏已经换日、存档里仍是昨天的名单时，才勾「补算一次今日自动刷新」。</p></details>
                         <div class="seq-row"><label>来源 <select id="sqSource"><option value="all">全部</option><option value="enrolled">在册</option><option value="backpack">背包</option><option value="shop">商店</option></select></label><label>姓名或天赋 <input id="sqFind" type="search" placeholder="筛选弟子"></label>
-                            <label>招募日期 <input type="date" id="sqFrom"></label><label>至 <input type="date" id="sqTo"></label>
-                        </div><div class="seq-row"><button type="button" id="sqAll">选中筛选结果</button><button type="button" id="sqNone">取消筛选结果</button></div>
+                            <label>招募开始日 <input type="date" id="sqFrom" aria-describedby="sqDateHint"></label><label>招募结束日 <input type="date" id="sqTo" aria-describedby="sqDateHint"></label>
+                            <button type="button" id="sqClearDates">清空日期</button>
+                        </div>
+                        <p id="sqDateHint" class="hengshan-message" role="status"></p>
+                        <button type="button" id="sqExtend" hidden></button>
+                        <div class="seq-row"><button type="button" id="sqOnly">只选当前结果</button><button type="button" id="sqAll">追加当前结果</button><button type="button" id="sqNone">取消勾选当前结果</button></div>
                         <div id="sqStudents" class="seq-list"></div>
                     </section>
                     <section class="config-panel"><h3>2 · 目标天赋组</h3><p>每组恰好三项，天赋等级与槽位顺序不限。同一组的弟子跑完，再跑下一组。</p>
